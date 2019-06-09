@@ -6,7 +6,7 @@ Varactor takes the expression matrix and the alleged nonpreferred clustering, wh
 
 # Results
 ## Datasets
-Many good datasets can be found from [Hemberg Group, Sanger Institute](https://github.com/hemberg-lab/scRNA.seq.datasets)
+Many good datasets can be found from [Hemberg Group, Sanger Institute](https://github.com/hemberg-lab/scRNA.seq.datasets).
 
 ## Brain cells
 Lake, B. B. et al. Neuronal subtypes and diversity revealed by single-nucleus RNA sequencing of the human brain. Science 352, 1586–1590 (2016)
