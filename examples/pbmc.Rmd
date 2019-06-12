@@ -1,0 +1,648 @@
+---
+title: "Alternative clustering for normal cells in the Melanoma dataset"
+output: html_notebook
+---
+ 
+```{r}
+rm(list=ls())
+library(matrixStats)
+library(Rtsne)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(Seurat)
+```
+
+
+# Read in 
+
+## Seq-Well dataset
+```{r}
+pbmc_well = list()
+pbmc_well$expr <- read.csv("../data/raw/pbmc_seq_well/GSM2486333_PBMC.txt", sep = ' ', header = T, row.names = 1)
+```
+
+## Explore
+```{r}
+pbmc_well$expr <- as.matrix(pbmc_well$expr)
+dim(pbmc_well$expr)
+pbmc_well$expr[1:5, 1:5]
+```
+
+```{r}
+pbmc_well$cell_type <- unlist(lapply(colnames(pbmc_well$expr), function(x) unlist(strsplit(x, split = '_'))[1]))
+table(pbmc_well$cell_type)
+
+pbmc_well$mask <- (pbmc_well$cell_type != "DC") & (pbmc_well$cell_type != "Removed")
+sum(pbmc_well$mask)
+
+pbmc_well$expr <- pbmc_well$expr[, pbmc_well$mask]
+pbmc_well$cell_type <- pbmc_well$cell_type[pbmc_well$mask]
+pbmc_well$mask <- NULL
+```
+
+```{r}
+pbmc_well$tsne <- Rtsne(t(pbmc_well$expr))
+plot(pbmc_well$tsne$Y, col=factor(pbmc_well$cell_type))
+```
+
+```{r}
+
+pbmc_well$mask <- rowSds(pbmc_well$expr) > 0
+pbmc_well$expr2 <- pbmc_well$expr[pbmc_well$mask, ]
+
+pbmc_well$expr2 <- pbmc_well$expr2 / rowSds(pbmc_well$expr2)
+
+pbmc_well$tsne2 <- Rtsne(t(pbmc_well$expr2))
+plot(pbmc_well$tsne2$Y, col=factor(pbmc_well$cell_type))
+```
+
+```{r}
+library(Matrix)
+matrix_dir = "../data/raw/pbmc3k_10x/filtered_gene_bc_matrices/hg19/"
+barcode.path <- paste0(matrix_dir, "barcodes.tsv")
+features.path <- paste0(matrix_dir, "genes.tsv")
+matrix.path <- paste0(matrix_dir, "matrix.mtx")
+pbmc_10x <- list()
+pbmc_10x$expr <- readMM(file = matrix.path)
+rownames(pbmc_10x$expr) <- read.delim(features.path, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+gene_names <- read.delim(features.path, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V2
+colnames(pbmc_10x$expr) = read.delim(barcode.path, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+```
+
+```{r}
+pbmc_10x$expr <- as.matrix(pbmc_10x$expr)
+pbmc_10x$log_expr <- log2(pbmc_10x$expr + 1)
+
+
+pbmc_10x$log_mean <- (rowMeans(pbmc_10x$log_expr))
+sum(pbmc_10x$log_mean >= 0.5)
+
+
+pbmc_10x$dispersion <- rowSds(pbmc_10x$expr) / rowMeans(pbmc_10x$expr)
+pbmc_10x$dispersion[is.nan(pbmc_10x$dispersion)] <- 0
+
+pbmc_10x$var_mask <- (pbmc_10x$log_mean > 0.5) & (pbmc_10x$dispersion > 0.5)
+sum(pbmc_10x$var_mask)
+```
+
+```{r}
+pbmc.data <- Read10X(data.dir = "../data/raw/pbmc3k_10x/filtered_gene_bc_matrices/hg19/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc
+```
+
+
+```{r}
+dim(data)
+data[1:5, 1:5]
+```
+
+```{r}
+expr_matrix <- data@assays$data$logcounts
+expr_matrix <- expr_matrix
+
+mask <- rowSds(expr_matrix) > 0
+expr_matrix <- expr_matrix[mask, ]
+
+expr_matrix <- expr_matrix / rowSds(expr_matrix)
+dim(expr_matrix)
+```
+
+```{r}
+head(data@colData)
+table(data@colData$Source)
+table(data@colData$cell_type1)
+table(data@colData$batch)
+table(data@colData$Plate)
+```
+
+
+```{r}
+patient_labels <- data@colData$batch
+type_labels <- data@colData$cell_type1
+location_labels <- data@colData$Source
+plate_labels <- data@colData$Plate
+```
+
+```{r}
+sum(is.na(patient_labels))
+sum(is.na(type_labels))
+sum(is.na(location_labels))
+```
+
+
+```{r}
+#pca_res <- prcomp(t(expr_matrix), rank.=50)
+#saveRDS(object = pca_res, file = "cluster_brain_pca.RDS")
+pca_res <- readRDS(file = "cluster_brain_pca.RDS")
+```
+
+```{r}
+set.seed(2019)
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+col_vector = col_vector[sample(1:length(col_vector), length(unique(type_labels)))]
+```
+
+```{r}
+degs <- unique(unlist(strsplit("SATB2,SLC17A7,SV2B,NRGN,CHN1,MLIP,RALYL,KIAA1211L,ENC1,ARPP21,KCNIP4,NPTX1,LDB2,HS3ST4,GAD1,SLC6A1,ERBB4,GAD2,ARX,QKI,IGF1,GRIK1,GRIP2,ADARB2,MAF,SPOCK3,GRIP1,ADRA1A,ANKRD55,SLC24A3,DLX1,POU6F2,SLC35F1,RORB,RXFP1,MGLL,GRM3,HS3ST2,PDZRN4,HPCAL1,LAMP5,PDZD2,CBLN2,CUX2,SERPINE2,SLIT3,CDH9,STXBP6,CCDC88C,EPHA6,RGS12,SLC24A4,TESPA1,CUX2,COBLL1,RORB,SLC38A11,MET,NTNG1,GRIK3,HS3ST4,HS3ST2,TMEFF2,GRIK4,SLIT3,CDH20,TSHZ2,SLIT1,GABRG1,PDE1A,RP11-383H13.1,TCERG1L,ROBO2,PCED1B,CPNE7,COL5A2,L3MBTL4,COL11A1,ST6GALNAC5,PRSS12,SCPEP1,SLIT1,SYNPR,CLMN,DGKG,RORB,EPHA3,FAM19A2,IL1RAPL2,LRRK1,PDE1C,COL11A1,TLL1,TRABD2A,PTPRK,PDZRN3,NWD2,CCK,SLC24A4,MGAT5B,ZNF804B,PTPRO,ITGB8,THEMIS,RTN4RL1,FRMD6,NPTXR,CBLN2,NTNG2,PPP4R4,SEMA3E,HS3ST4,KIAA1456,MCC,GRM4,GHR,PDE4B,GRIK3,PDGFC,ST6GALNAC5,SLIT3,TMEM108,GRIK4,ARHGEF28,SLC30A3,GRM3,KIRREL3,CNR1,RGS4,PDE4B,GULP1,PPP4R4,ACTN2,FSTL4,RGS12,POSTN,SMYD1,NTNG2,SYNPR,NR4A2,MCTP2,STK32B,RNF152,GFRA1,SPOCK3,OLFML2B,PDLIM5,HS3ST4,NTNG1,VWC2,CDK18,GDPD5,PLD5,ITGA11,GRIK3,SPARCL1,TSHZ3,SLC9A9,LHX6,STXBP6,TAC1,ADARB2,NFIB,RGS12,NFIX,PROX1,EGFR,KIT,NR2F2,AP1S2,CNTNAP4,DOCK10,CNR1,PKP2,RERG,NECAB2,CCK,LINGO2,ERBB4,GOLIM4,PLCXD3,SLIT2,ZMAT4,DPP10,GAD2,LYPD6,LYPD6B,FNBP1L,RGS5,SLC26A4,PVALB,SLIT1,TAC1,SULF1,MYO1B,SYNPR,GRIK1,FSTL5,KCNIP1,CHRM3,MAN1A1,GAD1,PRNP,CLU,TMEM66,ROBO2,TSPAN7,GRIK1,ARPP21,FIGN,SKAP1,MET,SGCZ,NCAM2,CBLN4,PDE4B,PENK,STK32B,KCNIP4,SLC24A4,DOCK10,KIRREL3,CALB1,CNTN6,HPGD,MAML2,ST6GALNAC5,ZMAT4,PAWR,L3MBTL4,GALNTL6,ARPP21,PDE4B,SEZ6L,CDH10,SV2C,FGF13,LAMP5,PTCHD4,CACNA2D1,SPHKAP,GOLIM4,MYO16,FBXL7,TRPC3,EYA4,SGCZ,MPPED1,GRIN2A,UNC5D,KIT,SERTM1,HRH1,PDGFD,GRM5,MGAT4C,ARHGAP31,TMEM132D,PMEPA1,OLFM3,IGFBP5,COL11A1,CHRNA2,OSBPL3,GPR149,LHFP,RARB,GRM5,MN1,MAML3,PDZRN3,FSTL5,ST6GALNAC5,CHSY3,FRAS1,MGAT4C,ALCAM,CDH9,COBLL1,PLCXD3,KCNQ5,CDH8,CDHR3,PRR16,PCDH10,ANGPT1,SLC7A11,KCND3,CNR1,NETO1,SYT17,PLS3,FAM126A,ARAP2,IGSF21,KCNIP4,KCNJ2,EXPH5,PREX1,SLC24A4,PCDH19,SYT2,SORL1,PDE9A,PRR16,FRAS1,FREM1,RELN,POU6F2,BMP6,CNR1,PLCXD3,ITGA8,LHX6,NOS1,FREM2,GPC6,SYNDIG1,CA8,CPNE8,HCRTR2,CA1,TMEM255A,ST6GALNAC5,VAV3,RND3,TAC1,NRP2,CA13,ROR1,OPRM1,PDGFD,ZBTB7C,GULP1,CA3", ",")))
+
+set.seed(0)
+tsne_res <- Rtsne(t(expr_matrix[degs, ]))
+pch = 20
+cex = .8
+
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topleft', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topright', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
+
+
+```{r}
+set.seed(0)
+tsne_res <- Rtsne(pca_res$x, pca=FALSE)
+pch = 20
+cex = .8
+
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topleft', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topright', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+
+```
+
+
+```{r}
+x = pca_res$x
+B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(patient_labels))
+{
+  mask <- patient_labels != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B <- B + temp %*% t(temp)
+}
+B <- B / dim(x)[1]
+
+mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
+{
+  if (is.null(y)) y = x
+  if (is.null(B)) B = diag(dim(x)[2])
+  B <- solve(B)
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+```
+
+
+```{r}
+set.seed(0)
+
+dist2 <- mahalanobis_pdist2(x, B=B)
+dist <- sqrt(dist2 - min(dist2))
+
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
+
+
+```{r}
+set.seed(0)
+
+dist2 <- mahalanobis_pdist2(x, B=B%*%B)
+dist <- sqrt(dist2 - min(dist2))
+
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topleft', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('topright', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+```
+
+```{r}
+col_vector2 = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
+col_vector2 = col_vector2[sample(1:length(col_vector2), length(unique(plate_labels)))]
+plot(tsne_res$Y, col=col_vector2[as.factor(plate_labels)], pch = pch, cex = cex)
+title("Group by plates")
+```
+
+```{r}
+x = pca_res$x
+B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(plate_labels))
+{
+  mask <- plate_labels != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B <- B + temp %*% t(temp)
+}
+B <- B / dim(x)[1]
+
+mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
+{
+  if (is.null(y)) y = x
+  if (is.null(B)) B = diag(dim(x)[2])
+  B <- solve(B)
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+set.seed(0)
+
+dist2 <- mahalanobis_pdist2(x, B=B)
+dist <- sqrt(dist2 - min(dist2))
+
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
+```{r}
+linear_pdist2 <- function(x, y)
+{
+  xx = rowSums(x * x)
+  yy = rowSums(y * y)
+  pdist2 <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist2 <- pdist2 + xx
+  pdist2 <- pdist2 - 2 * x %*% t(y)
+  pdist2
+}
+
+se_pdist <- function(x, y = NULL, sigma2)
+{
+  if (is.null(y)) y = x
+  pdist2 <- linear_pdist2(x, y)
+  2 - exp(-pdist2 / 2 / sigma2)
+}
+
+x = pca_res$x
+x = t(t(x) / colSds(x))
+pdist2 <- se_pdist(x, sigma2 = 1)
+dist <- sqrt(pdist2 - min(pdist2))
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
+
+```{r}
+linear_pdist2 <- function(x, y)
+{
+  xx = rowSums(x * x)
+  yy = rowSums(y * y)
+  pdist2 <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist2 <- pdist2 + xx
+  pdist2 <- pdist2 - 2 * x %*% t(y)
+  pdist2
+}
+
+se_pdist <- function(x, y = NULL, sigma2)
+{
+  if (is.null(y)) y = x
+  pdist2 <- linear_pdist2(x, y)
+  2 - exp(-pdist2 / 2 / sigma2)
+}
+
+x = pca_res$x
+x = t(t(x) / colSds(x))
+pdist2 <- se_pdist(x, sigma2 = 2)
+dist <- sqrt(pdist2 - min(pdist2))
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
+
+```{r}
+linear_pdist2 <- function(x, y)
+{
+  xx = rowSums(x * x)
+  yy = rowSums(y * y)
+  pdist2 <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist2 <- pdist2 + xx
+  pdist2 <- pdist2 - 2 * x %*% t(y)
+  pdist2
+}
+
+se_pdist <- function(x, y = NULL, sigma2)
+{
+  if (is.null(y)) y = x
+  pdist2 <- linear_pdist2(x, y)
+  2 - exp(-pdist2 / 2 / sigma2)
+}
+
+x = pca_res$x
+x = t(t(x) / colSds(x))
+pdist2 <- se_pdist(x, sigma2 = 3)
+dist <- sqrt(pdist2 - min(pdist2))
+
+set.seed(0)
+tsne_res <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+
+png('img.png', height = 360, width = 1280)
+par(mfrow=c(1, 3))
+plot(tsne_res$Y, col=col_vector[as.factor(type_labels)], pch = pch, cex = cex)
+
+title("Group by cell types")
+
+plot(tsne_res$Y, col=as.factor(location_labels), pch = pch, cex = cex)
+
+title("Group by Location")
+
+plot.new()
+temp <- table(type_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('top', temp, col=col_vector[1:length(temp)], pch=pch, ncol=2)
+temp <- table(location_labels)
+temp <- paste(names(temp), ' (', temp, ')', sep='')
+legend('bottom', temp, col=1:length(temp), ncol=1, pch=pch)
+
+title("Legends")
+dev.off()
+```
