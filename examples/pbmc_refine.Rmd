@@ -219,8 +219,6 @@ hist(rowSds(pbmc_well$expr2), xlim=c(0,2), breaks=20)
 
 ## Get a consensus weight
 
-
-
 ```{r}
 pbmc_10x$sd2 <- rowSds(pbmc_10x$expr2)
 pbmc_well$sd2 <- rowSds(pbmc_well$expr2)
@@ -233,6 +231,10 @@ int$weight <- sqrt((pbmc_10x$sd2 ^ 2 + pbmc_well$sd2 ^ 2) / 2)
 int$weight <- int$weight / sd(int$weight) + 1.
 ```
 
+```{r}
+plot(pbmc_10x$sd2, pbmc_well$sd2, pch=20)
+cor(pbmc_10x$sd2, pbmc_well$sd2)
+```
 
 
 ```{r}
@@ -250,11 +252,11 @@ int$tsne <- Rtsne(t(int$expr))
 ```
 
 ```{r}
-plot(int$tsne$Y)
-plot(int$tsne$Y, col=factor(int$cell_type))
+plot(int$tsne$Y, pch=20, cex=.5)
+plot(int$tsne$Y, col=factor(int$cell_type), pch=20, cex=.5)
 plot.new()
 legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
-plot(int$tsne$Y, col=factor(int$tech))
+plot(int$tsne$Y, col=factor(int$tech), pch=20, cex=.5)
 ```
 
 ```{r}
@@ -300,6 +302,114 @@ cex = .8
 ```
 
 ```{r}
+plot(int$tsne2$Y, pch=20, cex=.5)
+plot(int$tsne2$Y, col=factor(int$cell_type), pch=20, cex=.5)
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne2$Y, col=factor(int$tech), pch=20, cex=.5)
+```
+
+```{r}
+x = int$pca$x[int$tech == '10x', ]
+B_intra1 = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(int$cell_type[int$tech == '10x']))
+{
+  mask <- int$cell_type[int$tech == '10x'] != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B_intra1 <- B_intra1 + temp %*% t(temp)
+}
+B_intra1 <- B_intra1 / dim(x)[1]
+
+x = int$pca$x[int$tech == 'well', ]
+B_intra2 = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(int$cell_type[int$tech == 'well']))
+{
+  mask <- int$cell_type[int$tech == 'well'] != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B_intra2 <- B_intra2 + temp %*% t(temp)
+}
+B_intra2 <- B_intra2 / dim(x)[1]
+```
+
+```{r}
+
+inv_mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
+{
+  if (is.null(y)) y = x
+  if (is.null(B)) B = diag(dim(x)[2])
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+int$dist_intra_10x <- sqrt(inv_mahalanobis_pdist2(int$pca$x, B=solve(B_intra1)) + 1e-9)
+int$dist_intra_well <- sqrt(inv_mahalanobis_pdist2(int$pca$x, B=solve(B_intra2)) + 1e-9)
+
+sed <- function(d, s) {2 - 2 * exp(-d ^ 2 / s ^ 2)}
+
+int$dist3 <- sed(int$dist2, mean(dist2) / 2) + 0.01 * (sed(int$dist_intra_10x, mean(int$dist_intra_10x) / 2) + sed(int$dist_intra_well, mean(int$dist_intra_well) / 2))
+
+set.seed(0)
+int$tsne3 <- Rtsne(int$dist3, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(int$tsne3$Y)
+plot(int$tsne3$Y, col=factor(int$cell_type))
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne3$Y, col=factor(int$tech))
+```
+
+
+
+```{r}
+
+set.seed(0)
+
+int$dist1 <- sqrt(mahalanobis_pdist2(int$pca$x) + 1e-9)
+
+int$dist3 <- (2 - 2 * exp(-int$dist2 ^ 2 / 5 ^ 2)) + (2 - 2 * exp(-int$dist1 ^ 2 / 30 ^ 2))
+
+set.seed(0)
+int$tsne3 <- Rtsne(int$dist3, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(int$tsne3$Y)
+plot(int$tsne3$Y, col=factor(int$cell_type))
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne3$Y, col=factor(int$tech))
+```
+
+
+
+```{r}
+mixed_mahalanobis_pdist2 <- function(x, y = NULL, B_inter, B_intra)
+{
+  if (is.null(y)) y = x
+  B <- solve(B_inter) + B_intra
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+x = int$pca$x
+dist2 <- mixed_mahalanobis_pdist2(x, B_inter=B * 0.0000001, B_intra=(B_intra1 + B_intra2) * 0.0000001)
+int$dist2 <- sqrt(dist2 - min(dist2))
+
+set.seed(0)
+int$tsne2 <- Rtsne(int$dist2, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
 plot(int$tsne2$Y)
 plot(int$tsne2$Y, col=factor(int$cell_type))
 plot.new()
