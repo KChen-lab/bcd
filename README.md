@@ -9,9 +9,13 @@ Varactor takes the expression matrix and the alleged nonpreferred clustering, wh
 Many good datasets can be found from [Hemberg Group, Sanger Institute](https://github.com/hemberg-lab/scRNA.seq.datasets).
 
 ## Brain cells
+This experiment show that Varactor can evoke findings on multi-sample data.
+
 Lake, B. B. et al. Neuronal subtypes and diversity revealed by single-nucleus RNA sequencing of the human brain. Science 352, 1586–1590 (2016)
 
 ## PBMC cells
+This experiment show that Varactor can account for samples assayed by different technologies.
+
 [10x PBMC3k dataset](http://support.10xgenomics.com/single-cell/datasets/pbmc3k)
 
 [Seq-Well PBMC dataset (GSE92495)](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92495)
