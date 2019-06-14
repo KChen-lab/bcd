@@ -47,17 +47,6 @@ plot(pbmc_well$tsne$Y, col=factor(pbmc_well$cell_type))
 ```
 
 ```{r}
-
-pbmc_well$mask <- rowSds(pbmc_well$expr) > 0
-pbmc_well$expr2 <- pbmc_well$expr[pbmc_well$mask, ]
-
-pbmc_well$expr2 <- pbmc_well$expr2 / rowSds(pbmc_well$expr2)
-
-pbmc_well$tsne2 <- Rtsne(t(pbmc_well$expr2))
-plot(pbmc_well$tsne2$Y, col=factor(pbmc_well$cell_type))
-```
-
-```{r}
 pbmc.data <- Read10X(data.dir = "../data/raw/pbmc3k_10x/filtered_gene_bc_matrices/hg19/")
 # Initialize the Seurat object with the raw (non-normalized data).
 pbmc <- CreateSeuratObject(counts = pbmc.data, 
@@ -187,65 +176,98 @@ pbmc <- RenameIdents(pbmc, '0'='CD4', '1'='Myeloid', '2'='Bcell', '3'='CD8', '4'
 DimPlot(pbmc, reduction = "tsne")
 ```
 
+# Integration
+
 
 ```{r}
 pbmc_10x = list()
-pbmc_10x$expr <- as.matrix(pbmc@assays$RNA@scale.data)
+pbmc_10x$expr <- as.matrix(pbmc@assays$RNA@data)
 pbmc_10x$cell_type <- unname(Idents(pbmc))
 
 pbmc_10x$cell_mask <- pbmc_10x$cell_type != 'DC'
 pbmc_10x$expr <- pbmc_10x$expr[, pbmc_10x$cell_mask]
 pbmc_10x$cell_type <- pbmc_10x$cell_type[pbmc_10x$cell_mask]
-
-pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr) > 0
-pbmc_10x$expr <- pbmc_10x$expr[pbmc_10x$gene_mask, ]
-
-pbmc_10x$expr <- pbmc_10x$expr / rowSds(pbmc_10x$expr)
-
-dim(pbmc_10x$expr)
 ```
 
-# Integration
-
 ```{r}
-gene_common <- intersect(rownames(pbmc_10x$expr), rownames(pbmc_well$expr2))
-length(rownames(pbmc_10x$expr))
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr) > 0.0
+pbmc_10x$expr2 <- pbmc_10x$expr[pbmc_10x$gene_mask, ]
+
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr2) / rowMeans(pbmc_10x$expr2) > 0.5
+pbmc_10x$expr2 <- pbmc_10x$expr2[pbmc_10x$gene_mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr) > 0.0
+pbmc_well$expr2 <- pbmc_well$expr[pbmc_well$mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr2) / rowMeans(pbmc_well$expr2) > 0.5
+pbmc_well$expr2 <- pbmc_well$expr2[pbmc_well$mask, ]
+
+
+gene_common <- intersect(rownames(pbmc_10x$expr2), rownames(pbmc_well$expr2))
+length(rownames(pbmc_10x$expr2))
 length(rownames(pbmc_well$expr2))
 length(gene_common)
+
+pbmc_10x$expr2 <- pbmc_10x$expr2[gene_common, ]
+pbmc_well$expr2 <- pbmc_well$expr2[gene_common, ]
 ```
 
 ```{r}
-expr <- cbind(pbmc_10x$expr[gene_common, ] - rowMeans(pbmc_10x$expr[gene_common, ]),
-              pbmc_well$expr2[gene_common, ] - rowMeans(pbmc_well$expr2[gene_common, ]))
-cell_type <- c(as.character(pbmc_10x$cell_type), pbmc_well$cell_type)
-tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_well$cell_type)))
+hist(rowSds(pbmc_10x$expr2), xlim=c(0,2), breaks=20)
+hist(rowSds(pbmc_well$expr2), xlim=c(0,2), breaks=20)
+```
+
+## Get a consensus weight
+
+
+
+```{r}
+pbmc_10x$sd2 <- rowSds(pbmc_10x$expr2)
+pbmc_well$sd2 <- rowSds(pbmc_well$expr2)
+
+pbmc_10x$mean2 <- rowMeans(pbmc_10x$expr2)
+pbmc_well$mean2 <- rowMeans(pbmc_well$expr2)
+
+int = list()
+int$weight <- sqrt((pbmc_10x$sd2 ^ 2 + pbmc_well$sd2 ^ 2) / 2)
+int$weight <- int$weight / sd(int$weight) + 1.
+```
+
+
+
+```{r}
+int$expr <- cbind((pbmc_10x$expr2 - pbmc_10x$mean2) / pbmc_10x$sd2,
+              (pbmc_well$expr2 - pbmc_well$mean2) / pbmc_well$sd2)
+int$expr <- int$expr * int$weight
+
+int$cell_type <- c(as.character(pbmc_10x$cell_type), pbmc_well$cell_type)
+int$tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_well$cell_type)))
 ```
 
 
 ```{r}
-tsne_res <- Rtsne(t(expr))
-plot(tsne_res$Y, col=factor(cell_type))
-plot(tsne_res$Y, col=factor(tech))
+int$tsne <- Rtsne(t(int$expr))
 ```
 
 ```{r}
-plot(tsne_res$Y, col=factor(cell_type))
+plot(int$tsne$Y)
+plot(int$tsne$Y, col=factor(int$cell_type))
 plot.new()
-legend('center', legend = levels(factor(cell_type)), col = 1:length(levels(factor(cell_type))), pch=20)
-plot(tsne_res$Y, col=factor(tech))
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne$Y, col=factor(int$tech))
 ```
 
 ```{r}
-pca_res <- prcomp(t(expr), rank.=50)
+int$pca <- prcomp(t(int$expr), rank.=50)
 ```
 
 
 ```{r}
-x = pca_res$x
+x = int$pca$x
 B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
-for (j in unique(tech))
+for (j in unique(int$tech))
 {
-  mask <- tech != j
+  mask <- int$tech != j
   temp = t(x[mask, ]) - colSums(x[!mask, ])
   B <- B + temp %*% t(temp)
 }
@@ -263,69 +285,24 @@ mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
   pdist <- pdist - 2 * x %*% B %*% t(y)
   pdist
 }
-```
-
-
-```{r}
-set.seed(0)
 
 dist2 <- mahalanobis_pdist2(x, B=B)
-dist <- sqrt(dist2 - min(dist2))
-
-
-set.seed(0)
-tsne_res2 <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
-pch = 20
-cex = .8
-
-plot(tsne_res2$Y)
-plot(tsne_res2$Y, col=factor(cell_type))
-plot.new()
-legend('center', legend = levels(factor(cell_type)), col = 1:length(levels(factor(cell_type))), pch=20)
-plot(tsne_res2$Y, col=factor(tech))
-```
-
-```{r}
-x = pca_res$x
-B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
-for (j in unique(tech))
-{
-  mask <- tech != j
-  temp = t(x[mask, ]) - colSums(x[!mask, ])
-  B <- B + temp %*% t(temp)
-}
-B <- B / dim(x)[1]
-
-mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
-{
-  if (is.null(y)) y = x
-  if (is.null(B)) B = diag(dim(x)[2])
-  B <- 1 / (B + 1)
-  xx = rowSums(x %*% B * x)
-  yy = rowSums(y %*% B * y)
-  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
-  pdist <- pdist + xx
-  pdist <- pdist - 2 * x %*% B %*% t(y)
-  pdist
-}
+int$dist2 <- sqrt(dist2 - min(dist2))
 ```
 
 
 ```{r}
-set.seed(0)
-
-dist2 <- mahalanobis_pdist2(x, B=B)
-dist <- sqrt(dist2 - min(dist2))
-
 
 set.seed(0)
-tsne_res2 <- Rtsne(dist, is_distance = TRUE, pca=FALSE)
+int$tsne2 <- Rtsne(int$dist2, is_distance = TRUE, pca=FALSE)
 pch = 20
 cex = .8
+```
 
-plot(tsne_res2$Y)
-plot(tsne_res2$Y, col=factor(cell_type))
+```{r}
+plot(int$tsne2$Y)
+plot(int$tsne2$Y, col=factor(int$cell_type))
 plot.new()
-legend('center', legend = levels(factor(cell_type)), col = 1:length(levels(factor(cell_type))), pch=20)
-plot(tsne_res2$Y, col=factor(tech))
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne2$Y, col=factor(int$tech))
 ```
