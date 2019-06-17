@@ -257,7 +257,11 @@ int$tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_we
 
 
 ```{r}
-int$tsne <- Rtsne(t(int$expr))
+int$mds <- cmdscale(dist(t(int$expr)), k=50)
+```
+
+```{r}
+int$tsne <- Rtsne(int$mds)
 ```
 
 ```{r}
@@ -269,12 +273,7 @@ plot(int$tsne$Y, col=factor(int$tech), pch=20, cex=.5)
 ```
 
 ```{r}
-int$pca <- prcomp(t(int$expr), rank.=50)
-```
-
-
-```{r}
-x = int$pca$x
+x = int$mds
 B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
 for (j in unique(int$tech))
 {
