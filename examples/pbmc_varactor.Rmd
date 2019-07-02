@@ -1,0 +1,272 @@
+---
+title: "Alternative clustering for normal cells in the Melanoma dataset"
+output: html_notebook
+---
+ 
+```{r}
+rm(list=ls())
+library(matrixStats)
+library(Rtsne)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(Seurat)
+library(expm)  
+```
+
+
+# Read in 
+
+## Seq-Well dataset
+```{r}
+pbmc_well = list()
+pbmc_well$expr <- read.csv("../data/raw/pbmc_seq_well/GSM2486333_PBMC.txt", sep = ' ', header = T, row.names = 1)
+```
+
+## Explore
+```{r}
+pbmc_well$expr <- as.matrix(pbmc_well$expr)
+dim(pbmc_well$expr)
+pbmc_well$expr[1:5, 1:5]
+```
+
+```{r}
+pbmc_well$cell_type <- unlist(lapply(colnames(pbmc_well$expr), function(x) unlist(strsplit(x, split = '_'))[1]))
+table(pbmc_well$cell_type)
+
+pbmc_well$mask <- (pbmc_well$cell_type != "Removed") & (pbmc_well$cell_type != "DC")
+sum(pbmc_well$mask)
+
+pbmc_well$expr <- pbmc_well$expr[, pbmc_well$mask]
+pbmc_well$cell_type <- pbmc_well$cell_type[pbmc_well$mask]
+pbmc_well$mask <- NULL
+```
+
+```{r}
+pbmc_well$tsne <- Rtsne(t(pbmc_well$expr))
+plot(pbmc_well$tsne$Y, col=factor(pbmc_well$cell_type))
+```
+
+```{r}
+pbmc.data <- Read10X(data.dir = "../data/raw/pbmc3k_10x/filtered_gene_bc_matrices/hg19/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, 
+                           project = "pbmc3k")
+
+pbmc <- NormalizeData(pbmc, 
+                      normalization.method = "LogNormalize", 
+                      scale.factor = 10000, 
+                      verbose = FALSE)
+
+pbmc <- FindVariableFeatures(pbmc, 
+                             selection.method = "mean.var.plot", 
+                             nfeatures = 2000, 
+                             mean.cutoff=c(0.5, Inf), 
+                             dispersion.cutoff=c(0.5, Inf),
+                             verbose=FALSE
+                             )
+length(VariableFeatures(pbmc))
+```
+
+```{r}
+pbmc <- ScaleData(pbmc, features = rownames(pbmc))
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+pbmc <- RunTSNE(pbmc)
+```
+
+
+# Cell Markers
+MS4A1 CD20
+ITGAX CD11c
+IL3RA CD123
+NCAM1 CD56
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:13, k.param=50)
+pbmc <- FindClusters(pbmc, resolution = 0.75)
+DimPlot(pbmc, reduction = "tsne")
+```
+
+## T?
+```{r}
+FeaturePlot(pbmc, 
+            features = c("CD3E", "CD3D", "CD3G"),
+            reduction = "tsne")
+```
+
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD4"),
+            reduction = "tsne")
+```
+
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD8A", "CD8B"),
+            reduction = "tsne")
+```
+
+
+## B?
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD19", "MS4A1"),
+            reduction = "tsne")
+```
+
+## Dendritic?
+```{r}
+FeaturePlot(pbmc, 
+            features = c("ITGAX", "IL3RA"),
+            reduction = "tsne")
+```
+
+## NK?
+```{r}
+FeaturePlot(pbmc,
+            features = c("NCAM1"),
+            reduction = "tsne")
+```
+
+## Monocytes?
+```{r}
+FeaturePlot(pbmc, slot='counts',
+            features = c("CD14", "CD33"),
+            reduction = "tsne")
+```
+
+# Cluster 0 CD4?
+```{r}
+cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster0.markers
+```
+
+# Cluster 1 Myeloid?
+```{r}
+cluster1.markers <- FindMarkers(pbmc, ident.1 = 1, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster1.markers
+```
+
+# Cluster 2 B cell?
+```{r}
+cluster2.markers <- FindMarkers(pbmc, ident.1 = 2, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster2.markers
+```
+
+# Cluster 3 CD8 T? 
+```{r}
+cluster3.markers <- FindMarkers(pbmc, ident.1 = 3, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster3.markers
+```
+
+# Cluster 4 Dendritic?
+
+```{r}
+cluster4.markers <- FindMarkers(pbmc, ident.1 = 4, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster4.markers
+```
+
+# Cluster 5 NK?
+```{r}
+cluster5.markers <- FindMarkers(pbmc, ident.1 = 5, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster5.markers
+```
+
+```{r}
+pbmc <- RenameIdents(pbmc, '0'='CD4', '1'='Myeloid', '2'='Bcell', '3'='CD8', '4'='DC', '5'='NK')
+DimPlot(pbmc, reduction = "tsne")
+```
+
+# Integration
+
+
+```{r}
+pbmc_10x = list()
+pbmc_10x$expr <- as.matrix(pbmc@assays$RNA@data)
+pbmc_10x$cell_type <- unname(Idents(pbmc))
+
+pbmc_10x$cell_mask <- pbmc_10x$cell_type != 'DC'
+pbmc_10x$expr <- pbmc_10x$expr[, pbmc_10x$cell_mask]
+pbmc_10x$cell_type <- pbmc_10x$cell_type[pbmc_10x$cell_mask]
+```
+
+```{r}
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr) > 0.0
+pbmc_10x$expr2 <- pbmc_10x$expr[pbmc_10x$gene_mask, ]
+
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr2) / rowMeans(pbmc_10x$expr2) > 0.5
+pbmc_10x$expr2 <- pbmc_10x$expr2[pbmc_10x$gene_mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr) > 0.0
+pbmc_well$expr2 <- pbmc_well$expr[pbmc_well$mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr2) / rowMeans(pbmc_well$expr2) > 0.5
+pbmc_well$expr2 <- pbmc_well$expr2[pbmc_well$mask, ]
+
+
+gene_common <- intersect(rownames(pbmc_10x$expr2), rownames(pbmc_well$expr2))
+length(rownames(pbmc_10x$expr2))
+length(rownames(pbmc_well$expr2))
+length(gene_common)
+
+pbmc_10x$expr2 <- pbmc_10x$expr2[gene_common, ]
+pbmc_well$expr2 <- pbmc_well$expr2[gene_common, ]
+```
+
+
+```{r}
+int <- list()
+
+int$weight <- 1.
+```
+
+
+```{r}
+pbmc_10x$sd2 <- rowSds(pbmc_10x$expr2)
+pbmc_well$sd2 <- rowSds(pbmc_well$expr2)
+
+pbmc_10x$mean2 <- rowMeans(pbmc_10x$expr2)
+pbmc_well$mean2 <- rowMeans(pbmc_well$expr2)
+
+int$expr <- cbind((pbmc_10x$expr2 - pbmc_10x$mean2) / pbmc_10x$sd2,
+              (pbmc_well$expr2 - pbmc_well$mean2) / pbmc_well$sd2)
+int$expr <- int$expr * int$weight
+
+int$cell_type <- c(as.character(pbmc_10x$cell_type), pbmc_well$cell_type)
+int$tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_well$cell_type)))
+```
+
+```{r}
+source("../R/varactor_class.R")
+```
+
+```{r}
+obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")
+#obj$reduce(reduce_dim = 50)
+obj$reduced <- temp1
+obj$define_metric(name = "primary", type = "euclidean")
+```
+
+```{r}
+obj$measure("primary")
+```
+
+```{r}
+obj$embed(name = "primary", type = "tsne")
+```
+
+```{r}
+obj$plot_embedding("primary", "type")
+```
+
+
+```{r}
+temp1 <- obj$reduced
+```
+
+```{r}
+obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")$reduce()
+obj$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
+obj$define_metric("alternative", "davidson")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
+```
+
