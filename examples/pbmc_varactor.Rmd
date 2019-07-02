@@ -237,36 +237,84 @@ int$tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_we
 ```
 
 ```{r}
-source("../R/varactor_class.R")
+#source("../R/varactor_class.R")
 ```
 
 ```{r}
-obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")
+#obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")
 #obj$reduce(reduce_dim = 50)
-obj$reduced <- temp1
-obj$define_metric(name = "primary", type = "euclidean")
+#obj$reduced <- temp1
+#obj$define_metric(name = "primary", type = "euclidean")
 ```
 
 ```{r}
-obj$measure("primary")
+#obj$measure("primary")
 ```
 
 ```{r}
-obj$embed(name = "primary", type = "tsne")
+#obj$embed(name = "primary", type = "tsne")
 ```
 
 ```{r}
-obj$plot_embedding("primary", "type")
+#obj$plot_embedding("primary", "type")
 ```
 
 
 ```{r}
-temp1 <- obj$reduced
+#temp1 <- obj$reduced
 ```
 
 ```{r}
-obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")$reduce()
-obj$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
-obj$define_metric("alternative", "davidson")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
+#obj <- Varactor$new(data = int$expr, labels = list(tech=int$tech, type=int$cell_type), what = "normalized")$reduce()
+```
+
+```{r}
+#obj$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
+```
+
+```{r}
+#obj$define_metric("alternative", "davidson", strata = "tech")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
+```
+
+```{r}
+source("../R/varactor_class.R")
+obj2 <- Varactor$new(data = list(x10x = pbmc_10x$expr, well = pbmc_well$expr), 
+                     labels = list(x10x = list(type = as.character(pbmc_10x$cell_type)), 
+                                   well = list(type = as.character(pbmc_well$cell_type))
+                                  )
+                    )
+```
+
+```{r}
+obj2$normalize()
+obj2$combine()
+obj2$reduce()
+```
+
+```{r}
+temp_normalized -> obj2$normalized
+temp_reduced -> obj2$reduced
+temp_combined -> obj2$combined
+```
+
+
+```{r}
+obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
+```
+
+```{r}
+obj2$plot_embedding("primary", "sample", pch=20)
+```
+
+
+```{r}
+obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
+```
+```{r}
+obj2$plot_embedding("alternative", "sample", pch=20)
+```
+
+```{r}
+obj2$labels
 ```
 

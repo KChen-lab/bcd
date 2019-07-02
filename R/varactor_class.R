@@ -21,57 +21,129 @@ library(ggplot2)
 
 # How to define a pdist2 function? It should be a function only accept one matrix as input...
 
+# The normalization should be performed before getting the common genes...
+
+combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_width = NULL){
+  
+  if (!xor(is.null(data), is.null(data_width))){
+    stop("Bad arguments: must specify one and only one of data and data_width.")
+  }
+  
+  data_names <- names(labels)
+  label_names <- unique(unlist(lapply(labels, names)))
+  if (keep_sample_name){
+    label_names <- c(label_names, "sample")
+  }
+  
+  if (is.null(data_width)){
+    data_width <- unlist(lapply(dataset_names, function(x) dim(data[[x]])[2]))
+  }
+  
+  # c() if presence in all, unspecified if not provided
+  names(label_names) <- label_names
+  
+  lapply(label_names, 
+         function(x) unlist(lapply(data_names, 
+                                   function(y) if (length(labels[[y]][[x]]) > 0) 
+                                                 labels[[y]][[x]]
+                                               else
+                                                 rep(y, data_width[y])
+                                  )
+                           )
+        )
+}
+
 Varactor <- R6Class(
   classname = "Varactor", 
   
   public = list(
     # public fields
     
-    # public methods
-    initialize = function(data, labels, what = "raw", 
-                          reduce = 50, verbose = TRUE, manual = FALSE){
-      private$.verbose_write("Now you are creating an R6 object. 
-                             If you want to make a copy for an R6 object, use 'a_copy <- this_one$clone()'.")
-      
+    # public methods with side effects (all return invisible(self))
+    initialize = function(data, 
+                          labels, 
+                          what = "raw", 
+                          reduce_dim = 50, importance = "equal", # for PCA
+                          verbose = TRUE, auto = FALSE # control
+                          ){
       self$verbose <- verbose
-
-      private$.labels <- labels
       
-      if (what %in% c("raw", "normalized", "reduced")) private[[paste0('.', what)]] <- data
+      private$.verbose_write("Now you are creating an R6 object.")
+      private$.verbose_write("If you want to make a copy for an R6 object, use 'a_copy <- this_one$clone()'.")
+      
+      if (what %in% c("raw", "normalized", "combined", "reduced")) private[[paste0('.', what)]] <- data
       else stop("Bad argument what: must be 'raw', 'normalized' or 'reduced'.")
       
-      if (!manual)
+      if (what %in% c("raw", "normalized")){
+        private$.labels <- combine_labels(labels, data_width = unlist(lapply(data, function(x) dim(x)[2])))
+      }
+      else{
+        private$.labels <- labels
+      }
+      
+      if (auto)
       {
         if (what == "raw"){
           self$normalize()
         }
         if (what == "raw" || what == "normalized"){
-          self$reduce()
+          self$combine()
+        }
+        if (what == "raw" || what == "normalized" || what == "combined"){
+          self$reduce(reduce_dim, importance)
         }
       }
     },
     
-    normalize <- function(){
-      private$.verbose_write("Normalizing data...")
-      private$.data$normalized <- t(t(self$.raw) / colMeans(self$.raw))
+    normalize = function(){
+      private$.verbose_write("Normalizing data for each dataset...")
+      private$.verbose_write("Note that the nomalization is based all the genes available in each dataset.")
+      private$.normalized <- lapply(private$.raw, function(x) t(t(x) / colMeans(x)))
       invisible(self)
-    }
+    },
     
-    reduce <- function(...){
+    combine = function(sd_threshold = 0.0, cv_threshold = 0.5){
+      private$.verbose_write("Combine data to one single dataset...")
+      
+      temp <- lapply(private$.normalized, function(x) x[rowSds(x) > sd_threshold, ])
+      
+      temp <- lapply(temp, function(x) x[rowSds(x) / rowMeans(x) > cv_threshold, ])
+      
+      common_genes <- Reduce(intersect, lapply(temp, rownames))
+      
+      temp <- lapply(temp, function(x) x[common_genes, ])
+      
+      temp <- lapply(temp, function(x) (x - rowMeans(x)) / rowSds(x))
+      
+      private$.combined <- do.call(cbind, temp)
+    },
+    
+    reduce = function(reduce_dim = 50, importance = "equal"){
       private$.verbose_write("Calculating PCA...")
       private$.verbose_write(paste0("Dimensionality is set to ", 
-                                    reduce, 
+                                    reduce_dim, 
                                     ". If this is not preferred provide a value for parameter reduce."))
       private$.verbose_write("Depending on the data size, this may take a few minutes...")
       
-      private$.reduced <- prcomp(t(private$.normalized), rank.=reduce, ...)$x
+      gene_Sds <- rowSds(private$.combined)
+      private$.verbose_write(paste0(sum(gene_Sds == 0), " constant genes are not considered in PCA."))
+      
+      if (importance == "equal"){
+        private$.reduced <- prcomp(t(private$.combined[gene_Sds > 0, ]), 
+                                   rank.=reduce_dim, scale. = TRUE)$x
+      }
+      else{
+        stop("Not implemented.")
+      }
       invisible(self)
-    }
+    },
     
-    define_metric = function(name, type = "euclidean", manual = FALSE,
+    define_metric = function(name, type = "euclidean", manual = TRUE,
                                strata = NA, mahalanobis_cov = NA){
+      # Be very careful that all variables in the functions are in the local
+      # environment (closure) to avoid untrackable bugs.
       if (type == "euclidean"){
-        private$.pdist2[[name]] <- function(x){
+        private$.metric[[name]] <- function(x){
           xx = rowSums(x * x)
           pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
           pdist <- pdist + xx
@@ -82,7 +154,7 @@ Varactor <- R6Class(
       
       else if (type == "mahalanobis"){
         invS <- solve(mahalanobis_cov)
-        private$.pdist2[[name]] <- function(x){
+        private$.metric[[name]] <- function(x){
           xx = rowSums(x %*% invS * x)
           pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
           pdist <- pdist + xx
@@ -92,16 +164,16 @@ Varactor <- R6Class(
       }
       
       else if (type == "davidson"){
-        B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+        B = matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
         if (is.na(strata)) stop("Bad argument")
-        unwanted_label <- labels[[strata]]
+        unwanted_label <- private$.labels[[strata]]
         for (j in unique(unwanted_label))
         {
-          mask <- bad_labels != j
-          temp <- t(x[mask, ]) - colSums(x[!mask, ])
+          mask <- unwanted_label != j
+          temp <- t(private$.reduced[mask, ]) - colSums(private$.reduced[!mask, ])
           B <- B + temp %*% t(temp)
         }
-        B <- B / dim(x)[1]
+        B <- B / dim(private$.reduced)[1]
         
         # Call this function recursively to get a mahalanobis distance metric
         # with B as its covariance matrix
@@ -114,12 +186,15 @@ Varactor <- R6Class(
       if (!manual){
         self$measure(name = name)
       }
+      
+      invisible(self)
     },
     
-    measure = function(name)
-    {
-      temp <- private$.pdist2(private$.reduced)
+    measure = function(name){
+      temp <- private$.metric[[name]](private$.reduced)
       private$.distance_matrices[[name]] <- sqrt(temp - min(temp))
+      
+      invisible(self)
     },
     
     embed = function(name, type = "tsne", ...){
@@ -128,8 +203,8 @@ Varactor <- R6Class(
       }
       
       if (type == "tsne"){
-        private$.embedding[[name]] = Rtsne(private$.distance_matrices[[name]], 
-                                           is_distance = T, ...)
+        private$.embeddings[[name]] = Rtsne(private$.distance_matrices[[name]], 
+                                           is_distance = T, ...)$Y
       }
       else if (type == "umap"){
         stop("Not implemented.")
@@ -143,43 +218,45 @@ Varactor <- R6Class(
       invisible(self)
     },
     
+    # public methods without side effects
     plot_reduced = function(label_name, dims = c(1, 2), ...){
       if (length(dims) <= 2){
-        print(private$.data$reduced)
-        plot(private$.data$reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
-        title("title")
+        p <- plot(private$.reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
       }
       else if (length(dims) > 2){
-        pairs(private$.data$reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
+        p <- pairs(private$.reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
       }
       else stop("Bad argument")
+      
+      return(p)
     },
     
-    
-    
-    plot_embedding = function(embedding_name){
-      stop("Not implemented.")
+    plot_embedding = function(name, label_name, ...){
+      p <- plot(private$.embeddings[[name]], col=factor(private$.labels[[label_name]]), ...)
+      return(p)
     }
   ),
 
   private = list(
     
     # private fields
-    .raw = NA,
-    .normalized = NA,
-    .reduced = NA,
+    .raw = NA,        # a list of datasets (as matrices)
+    .normalized = NA, # a list of datasets (as matrices)
+    .combined = NA,   # a single combined matrix
+    .reduced = NA,    # a  
     
+    .raw_labels = NA,
     .labels = NA,
     
     .distance_matrices = list(),
     .embeddings = list(),
     
-    .pdist2_func = NA,
+    .metric = list(),
 
     # verbosity
     .verbose = NA,
     .verbose_print = NA,
-    .verbose_write = NA,
+    .verbose_write = NA
     
   ),
   
@@ -220,11 +297,20 @@ Varactor <- R6Class(
         return(private$.normalized)
       } 
       else{
-        private$.verbose_write("Note: You are changing the normalized expression. 
-                               This neither automatically perform preprocessing or recalculation the results. 
-                               You may consider to run reduce() manually. 
-                               Also, discrepancy is possible between the raw data and this newly assigned normalized data.")
+        private$.verbose_write("Note: You are changing the normalized expression.")
+        private$.verbose_write("This may cause discrepancy between it and the up/down stream data.")
         private$.normalized <- value
+      }
+    },
+    
+    combined = function(value){
+      if (missing(value)) {
+        return(private$.combined)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the combined expression.")
+        private$.verbose_write("This may cause discrepancy between it and the up/down stream data.")
+        private$.combined <- value
       }
     },
     
@@ -233,10 +319,20 @@ Varactor <- R6Class(
         return(private$.reduced)
       } 
       else{
-        private$.verbose_write("Note: You are changing the normalized expression. 
+        private$.verbose_write("Note: You are changing the reduced expression. 
                                This does not automatically recalculation the results. 
                                Also, discrepancy is possible between the raw data, normalized data and this newly assigned reduced data.")
         private$.reduced <- value
+      }
+    },
+    
+    labels = function(value){
+      if (missing(value)) {
+        return(private$.labels)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the labels.")
+        private$.labels <- value
       }
     }
   )
