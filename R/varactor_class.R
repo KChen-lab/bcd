@@ -1,6 +1,7 @@
 library(R6)
 library(matrixStats)
 library(Rtsne)
+library(umap)
 library(ggplot2)
 
 # The core of varactor is distance.
@@ -33,7 +34,7 @@ combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_wi
   for (i in 1:length(labels)){
     if (class(labels[[i]]) != "list") stop("Bad argument: labels should contain lists.")
     for (j in 1:length(labels[[i]])){
-      if (class(labels[[i]][[j]]) != "characters") stop("Bad arguments: a label should be of class characters")
+      if (class(labels[[i]][[j]]) != "character") stop("Bad arguments: a label should be of class character")
     }
   }
   
@@ -215,7 +216,10 @@ Varactor <- R6Class(
                                            is_distance = T, ...)$Y
       }
       else if (type == "umap"){
-        stop("Not implemented.")
+        config <- umap.defaults
+        config$input <- "dist"
+        private$.embeddings[[name]] <- umap(private$.distance_matrices[[name]],
+                                           config = config)$layout
       }
       else if (type == "mds"){
         stop("Not implemented.")
