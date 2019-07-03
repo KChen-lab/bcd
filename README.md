@@ -1,5 +1,7 @@
 # Introduction
-Varactor (Visualization and analysis of single-cell RNA-seq data by alternative clustering) takes the expression matrix and the alleged nonpreferred clustering, which are either labeled beforehand, or previously discovered from the data. It redefines the pairwise distance of the cells, where the effect of the unwanted clustering is controlled, and use tSNE (which can be substituted with any distance-based clustering methods) on the new distances. It provides a new perspective for inspecting the similarity of the cells, instead of manipulating the expression data. The differential expression analysis may then be performed on the original data (see Nygaard, V. et al. Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses. Biostatistics, 17(1), 29–39 (2016)) with the batches considered either covariates or strata. We implemented stratified Wilcoxon U-test as a stand alone tool, and a supplemnent to the [Seurat](https://github.com/satijalab/seurat) package.
+Varactor (Visualization and analysis of single-cell RNA-seq data by alternative clustering) takes the expression matrix and the alleged nonpreferred clustering, which are either labeled beforehand, or previously discovered from the data. It redefines the pairwise distance of the cells, where the effect of the unwanted clustering is controlled, and use tSNE (which can be substituted with any distance-based clustering methods) on the new distances. It provides a new perspective for inspecting the similarity of the cells, instead of manipulating the expression data. The differential expression analysis may then be performed on the original data (see Nygaard, V. et al. Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses. Biostatistics, 17(1), 29–39 (2016)) with the batches considered either covariates or strata. 
+
+In the case one only wants to use the stratified test, we implemented stratified Wilcoxon U-test as a supplemnent to the [Seurat](https://github.com/satijalab/seurat) package. Please see the corresponding [repository](https://github.com/KChen-lab/stratified-tests-for-seurat).
 
 # Usage
 
@@ -27,9 +29,9 @@ obj$normalize()$combine()$reduce()
 ```
 The object ```obj``` will contain the processed dataset and you do not need to assign the value back as in ~~```obj <- obj$normalize()```~~.
 
-## Embedding
-
-### Primary embedding
+## Embedding and clustering
+All process are routine till now. To stress the idea of "alternative clustering", you can now create branches in the object to embed and cluster data with different metrics. 
+### Primary
 Using Euclidean distance, it is easy to find and plot the most familiar embedding using t-SNE. You may also choose to use UMAP.
 ```r
 obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
@@ -39,18 +41,20 @@ You can also plot it with a different coloring, to emphasize the difference betw
 obj2$plot_embedding("alternative", "sample", pch=20)
 ```
 
-### Alternative Embedding
+### Alternative
 By using a different definition of distance (davidson distance controling difference between samples in this case), you can find the alternative embedding.
 ```r
 obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
 ```
 
-## Clustering
-
 ## Hypothesis Testing for Differential Expression Genes
+We provide two types of hypothesis tests, the ones based on strata and the ones based on covariates.
 
 ## Downstream Trajectory Inference
 
+
+## Non-distance-based methods?
+The metric based nature of Varactor makes it suitable for distance based methods. That said, there are work arounds to fit non-distance-based methods. The easiest one is to perform a multidimensional scaling (MDS) to transfer the distance matrix back in to a space.
 
 # Results
 ## Datasets
