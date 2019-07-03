@@ -292,10 +292,27 @@ obj2$reduce()
 ```
 
 ```{r}
-temp_normalized -> obj2$normalized
-temp_reduced -> obj2$reduced
-temp_combined -> obj2$combined
+#temp_normalized -> obj2$normalized
+#temp_reduced -> obj2$reduced
+#temp_combined -> obj2$combined
 ```
+
+```{r}
+obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "umap")$plot_embedding("primary", "type", pch=20)
+```
+
+```{r}
+obj2$plot_embedding("primary", "sample", pch=20)
+```
+
+```{r}
+obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "umap")$plot_embedding("alternative", "type", pch=20)
+```
+
+```{r}
+obj2$plot_embedding("alternative", "sample", pch=20)
+```
+
 
 
 ```{r}
