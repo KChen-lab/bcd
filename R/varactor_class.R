@@ -62,6 +62,14 @@ combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_wi
         )
 }
 
+euclidean_pdist2 <- function(x){
+  xx = rowSums(x * x)
+  pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% t(x)
+  pdist 
+}
+
 Varactor <- R6Class(
   classname = "Varactor", 
   
@@ -173,7 +181,7 @@ Varactor <- R6Class(
       }
       
       else if (type == "davidson"){
-        B = matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
         if (is.na(strata)) stop("Bad argument")
         unwanted_label <- private$.labels[[strata]]
         for (j in unique(unwanted_label))
@@ -190,6 +198,29 @@ Varactor <- R6Class(
         self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
                            mahalanobis_cov = B)
       }
+      
+      else if (type == "continuous_davidson"){
+        # naive implementation, optimization needed
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        n <- dim(private$.reduced)[1]
+        
+        if (is.na(strata)) stop("Bad argument")
+        unwanted_label <- private$.labels[[strata]]
+        
+        W <- euclidean_pdist2(x = unwanted_label)
+        
+        for (i in 1:n){
+          for (j in 1:n){
+            temp <- t(private$.reduced[i, ] - private$.reduced[j, ])
+            B <- B + temp %*% t(temp)
+          }
+        }
+        B <- B / sum(W)
+        
+        self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                           mahalanobis_cov = B)
+      }
+      
       else stop("Bad argument. Distance type not supported.")
       
       if (!manual){
