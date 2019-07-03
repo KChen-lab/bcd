@@ -4,6 +4,7 @@ Varactor (Visualization and analysis of single-cell RNA-seq data by alternative 
 In the case one only wants to use the stratified test, we implemented stratified Wilcoxon U-test as a supplemnent to the [Seurat](https://github.com/satijalab/seurat) package. Please see the corresponding [repository](https://github.com/KChen-lab/stratified-tests-for-seurat).
 
 # Usage
+This is an abstract of the analysis of the PBMC datasets. The full examples is available [here](https://kchen-lab.github.io/varactor/pbmc_varactor.nb.html).
 
 ## Create a Varactor Object
 Varactor is implemented using R6 class. To create an object, simply call ```new()```. The following chunk uses 10x and well-seq of PBMC for example, to create a Varactor object. A label called "sample" is automatically added to the labels to flag the origination of cells, even after they are combined into one matrix (by ```combine()``` showing later).
@@ -32,7 +33,7 @@ The object ```obj``` will contain the processed dataset and you do not need to a
 ## Embedding and clustering
 All process are routine till now. To stress the idea of "alternative clustering", you can now create branches in the object to embed and cluster data with different metrics. 
 ### Primary
-Using Euclidean distance, it is easy to find and plot the most familiar embedding using t-SNE. You may also choose to use UMAP.
+Using Euclidean distance, it is easy to find and plot the most familiar embedding using t-SNE. You may also choose to use UMAP by using ```embed("primary", "umap")```.
 ```r
 obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
 ```
@@ -56,18 +57,18 @@ We provide two types of hypothesis tests, the ones based on strata and the ones 
 ## Non-distance-based methods?
 The metric based nature of Varactor makes it suitable for distance based methods. That said, there are workarounds for it to fit non-distance-based methods. The easiest one is to perform a multidimensional scaling (MDS) to transfer the distance matrix back in to a space.
 
-# Results
-## Datasets
-Many good datasets can be found from [Hemberg Group, Sanger Institute](https://github.com/hemberg-lab/scRNA.seq.datasets).
+# Full Examples
+
+## PBMC cells
+This [experiment](https://kchen-lab.github.io/varactor/pbmc_varactor.nb.html) show that Varactor can account for samples assayed by different technologies.
+
+[10x PBMC3k dataset](http://support.10xgenomics.com/single-cell/datasets/pbmc3k)
+
+[Seq-Well PBMC dataset (GSE92495)](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92495)
 
 ## Brain cells
 This experiment show that Varactor can evoke findings on multi-sample data.
 
 Lake, B. B. et al. Neuronal subtypes and diversity revealed by single-nucleus RNA sequencing of the human brain. Science 352, 1586–1590 (2016)
 
-## PBMC cells
-This experiment show that Varactor can account for samples assayed by different technologies.
-
-[10x PBMC3k dataset](http://support.10xgenomics.com/single-cell/datasets/pbmc3k)
-
-[Seq-Well PBMC dataset (GSE92495)](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92495)
+Many other good datasets are available at [Hemberg Group, Sanger Institute](https://github.com/hemberg-lab/scRNA.seq.datasets).
