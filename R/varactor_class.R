@@ -212,7 +212,7 @@ Varactor <- R6Class(
         for (i in 1:n){
           for (j in 1:n){
             temp <- t(private$.reduced[i, ] - private$.reduced[j, ])
-            B <- B + temp %*% t(temp)
+            B <- B + temp %*% t(temp) * W[i, j]
           }
         }
         B <- B / sum(W)
