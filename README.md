@@ -54,7 +54,7 @@ We provide two types of hypothesis tests, the ones based on strata and the ones 
 
 
 ## Non-distance-based methods?
-The metric based nature of Varactor makes it suitable for distance based methods. That said, there are work arounds to fit non-distance-based methods. The easiest one is to perform a multidimensional scaling (MDS) to transfer the distance matrix back in to a space.
+The metric based nature of Varactor makes it suitable for distance based methods. That said, there are workarounds for it to fit non-distance-based methods. The easiest one is to perform a multidimensional scaling (MDS) to transfer the distance matrix back in to a space.
 
 # Results
 ## Datasets
