@@ -27,7 +27,9 @@ obj$normalize()$combine()$reduce()
 ```
 The object ```obj``` will contain the processed dataset and you do not need to assign the value back as in ~~```obj <- obj$normalize()```~~.
 
-## Primary Embedding
+## Embedding
+
+### Primary embedding
 Using Euclidean distance, it is easy to find and plot the most familiar embedding using t-SNE. You may also choose to use UMAP.
 ```r
 obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
@@ -37,13 +39,17 @@ You can also plot it with a different coloring, to emphasize the difference betw
 obj2$plot_embedding("alternative", "sample", pch=20)
 ```
 
-## Alternative Embedding
+### Alternative Embedding
 By using a different definition of distance (davidson distance controling difference between samples in this case), you can find the alternative embedding.
 ```r
 obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
 ```
 
-## Summary
+## Clustering
+
+## Hypothesis Testing for Differential Expression Genes
+
+## Downstream Trajectory Inference
 
 
 # Results
