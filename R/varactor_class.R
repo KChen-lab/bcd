@@ -29,6 +29,14 @@ combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_wi
     stop("Bad arguments: must specify one and only one of data and data_width.")
   }
   
+  if (class(labels) != "list") stop("Bad argument: labels should be a list.")
+  for (i in 1:length(labels)){
+    if (class(labels[[i]]) != "list") stop("Bad argument: labels should contain lists.")
+    for (j in 1:length(labels[[i]])){
+      if (class(labels[[i]][[j]]) != "characters") stop("Bad arguments: a label should be of class characters")
+    }
+  }
+  
   data_names <- names(labels)
   label_names <- unique(unlist(lapply(labels, names)))
   if (keep_sample_name){
