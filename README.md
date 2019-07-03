@@ -20,30 +20,33 @@ obj2 <- Varactor$new(data = data, labels = labels)
 ## Preprocess
 The input is a list of datasets and labels, so preprocessing is necessary to analyze them jointly. This includes normalization (including log-transform) of each dataset, combine them together (while only retain genes appear in all datasets) and dimensional reduction. This can be done by calling the corresponding methods (i.e., member functions).
 ```r
-obj2$normalize()
-obj2$combine()
-obj2$reduce()
+obj$normalize()
+obj$combine()
+obj$reduce()
 ```
-Or, you may chain these methods
+Altenatively, you may chain these methods as follows.
 ```r
-obj2$normalize()$combine()$reduce()
+obj$normalize()$combine()$reduce()
 ```
+The object ```obj``` will contain the processed dataset and you do not need to assign the value back as in ~~```obj <- obj$normalize()```~~.
 
 ## Primary Embedding
 Using Euclidean distance, it is easy to find and plot the most familiar embedding using t-SNE. You may also choose to use UMAP.
 ```r
 obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
 ```
-You can also plot it with a different coloring. The embedding is automatically stored in the object, so you only need to call ```plot_embedding```.
+You can also plot it with a different coloring, to emphasize the difference between samples instead of cell types. The embedding is automatically stored in the object, so you only need to call ```plot_embedding```.
 ```{r}
 obj2$plot_embedding("alternative", "sample", pch=20)
 ```
 
-## Secondary Embedding
+## Alternative Embedding
 By using a different definition of distance (davidson distance controling difference between samples in this case), you can find the alternative embedding.
 ```r
 obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
 ```
+
+## Summary
 
 
 # Results
