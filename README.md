@@ -39,7 +39,7 @@ obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "
 ```
 You can also plot it with a different coloring, to emphasize the difference between samples instead of cell types. The embedding is automatically stored in the object, so you only need to call ```plot_embedding```.
 ```{r}
-obj2$plot_embedding("alternative", "sample", pch=20)
+obj2$plot_embedding("primary", "sample", pch=20)
 ```
 
 ### Alternative
