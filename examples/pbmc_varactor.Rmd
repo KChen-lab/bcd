@@ -291,7 +291,7 @@ pbmc_10x$cell_type <- pbmc_10x$cell_type[pbmc_10x$cell_mask]
 
 ## Create a Varactor object
 ```{r}
-source("../R/varactor_class.R")
+source("../R/varactor.R")
 obj2 <- Varactor$new(data = list(x10x = pbmc_10x$expr, well = pbmc_well$expr), 
                      labels = list(x10x = list(type = as.character(pbmc_10x$cell_type)), 
                                    well = list(type = as.character(pbmc_well$cell_type))

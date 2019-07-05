@@ -1,38 +1,383 @@
+library(R6)
+library(matrixStats)
+library(Rtsne)
+library(umap)
+library(ggplot2)
 
-mahalanobis_pdist2 <- function(x, y = NULL, B = NULL, t=1)
-{
-  if (is.null(y)) y = x
-  if (is.null(B)) B = diag(dim(x)[2])
-  invB <- solve(B) %^% t
-  xx = rowSums(x %*% invB * x)
-  yy = rowSums(y %*% invB * y)
-  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+# The core of varactor is distance.
+# So there should be three fields:
+# data, distance, and embedding 
+# (and maybe clustering, which may just serve as a label)
+
+# Avoid complicating the situation or playing too much with R6.
+# Only use active fields when the effect is understandable (i.e. without weird side-effect).
+
+# It should be able to hold multiple clustering/embedding results to suit its name.
+
+# Postpone the self-assigned distance function. It's not practical to let the user to assign one after all...
+# If one can, let them edit the code...
+
+# There can be two different types of clustering methods, the ones based on distance
+# and the ones not based on distance. How to solve this?
+
+# How to define a pdist2 function? It should be a function only accept one matrix as input...
+
+# The normalization should be performed before getting the common genes...
+
+combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_width = NULL){
+  
+  if (!xor(is.null(data), is.null(data_width))){
+    stop("Bad arguments: must specify one and only one of data and data_width.")
+  }
+  
+  if (class(labels) != "list") stop("Bad argument: labels should be a list.")
+  for (i in 1:length(labels)){
+    if (class(labels[[i]]) != "list") stop("Bad argument: labels should contain lists.")
+    for (j in 1:length(labels[[i]])){
+      if (class(labels[[i]][[j]]) != "character") stop("Bad arguments: a label should be of class character")
+    }
+  }
+  
+  data_names <- names(labels)
+  label_names <- unique(unlist(lapply(labels, names)))
+  if (keep_sample_name){
+    label_names <- c(label_names, "sample")
+  }
+  
+  if (is.null(data_width)){
+    data_width <- unlist(lapply(dataset_names, function(x) dim(data[[x]])[2]))
+  }
+  
+  # c() if presence in all, unspecified if not provided
+  names(label_names) <- label_names
+  
+  lapply(label_names, 
+         function(x) unlist(lapply(data_names, 
+                                   function(y) if (length(labels[[y]][[x]]) > 0) 
+                                                 labels[[y]][[x]]
+                                               else
+                                                 rep(y, data_width[y])
+                                  )
+                           )
+        )
+}
+
+euclidean_pdist2 <- function(x){
+  xx = rowSums(x * x)
+  pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
   pdist <- pdist + xx
-  pdist <- pdist - 2 * x %*% invB %*% t(y)
-  pdist
+  pdist <- pdist - 2 * x %*% t(x)
+  pdist 
 }
 
-bad_corr <- function(x, bad_labels)
-{
-  B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
-  for (j in unique(bad_labels))
-  {
-    mask <- bad_labels != j
-    temp = t(x[mask, ]) - colSums(x[!mask, ])
-    B <- B + temp %*% t(temp)
-  }
-  B <- B / dim(x)[1]
-  B
-}
+Varactor <- R6Class(
+  classname = "Varactor", 
+  
+  public = list(
+    # public fields
+    
+    # public methods with side effects (all return invisible(self))
+    initialize = function(data, 
+                          labels, 
+                          what = "raw", 
+                          reduce_dim = 50, importance = "equal", # for PCA
+                          verbose = TRUE, auto = FALSE # control
+                          ){
+      self$verbose <- verbose
+      
+      private$.verbose_write("Now you are creating an R6 object.")
+      private$.verbose_write("If you want to make a copy for an R6 object, use 'a_copy <- this_one$clone()'.")
+      
+      if (what %in% c("raw", "normalized", "combined", "reduced")) private[[paste0('.', what)]] <- data
+      else stop("Bad argument what: must be 'raw', 'normalized' or 'reduced'.")
+      
+      if (what %in% c("raw", "normalized")){
+        private$.labels <- combine_labels(labels, data_width = unlist(lapply(data, function(x) dim(x)[2])))
+      }
+      else{
+        private$.labels <- labels
+      }
+      
+      if (auto)
+      {
+        if (what == "raw"){
+          self$normalize()
+        }
+        if (what == "raw" || what == "normalized"){
+          self$combine()
+        }
+        if (what == "raw" || what == "normalized" || what == "combined"){
+          self$reduce(reduce_dim, importance)
+        }
+      }
+    },
+    
+    normalize = function(){
+      private$.verbose_write("Normalizing data for each dataset...")
+      private$.verbose_write("Note that the nomalization is based all the genes available in each dataset.")
+      private$.normalized <- lapply(private$.raw, function(x) t(t(x) / colMeans(x)))
+      invisible(self)
+    },
+    
+    combine = function(sd_threshold = 0.0, cv_threshold = 0.5){
+      private$.verbose_write("Combine data to one single dataset...")
+      
+      temp <- lapply(private$.normalized, function(x) x[rowSds(x) > sd_threshold, ])
+      
+      temp <- lapply(temp, function(x) x[rowSds(x) / rowMeans(x) > cv_threshold, ])
+      
+      common_genes <- Reduce(intersect, lapply(temp, rownames))
+      
+      temp <- lapply(temp, function(x) x[common_genes, ])
+      
+      temp <- lapply(temp, function(x) (x - rowMeans(x)) / rowSds(x))
+      
+      private$.combined <- do.call(cbind, temp)
+    },
+    
+    reduce = function(reduce_dim = 50, importance = "equal"){
+      private$.verbose_write("Calculating PCA...")
+      private$.verbose_write(paste0("Dimensionality is set to ", 
+                                    reduce_dim, 
+                                    ". If this is not preferred provide a value for parameter reduce."))
+      private$.verbose_write("Depending on the data size, this may take a few minutes...")
+      
+      gene_Sds <- rowSds(private$.combined)
+      private$.verbose_write(paste0(sum(gene_Sds == 0), " constant genes are not considered in PCA."))
+      
+      if (importance == "equal"){
+        private$.reduced <- prcomp(t(private$.combined[gene_Sds > 0, ]), 
+                                   rank.=reduce_dim, scale. = TRUE)$x
+      }
+      else{
+        stop("Not implemented.")
+      }
+      invisible(self)
+    },
+    
+    define_metric = function(name, type = "euclidean", manual = TRUE,
+                               strata = NA, mahalanobis_cov = NA){
+      # Be very careful that all variables in the functions are in the local
+      # environment (closure) to avoid untrackable bugs.
+      if (type == "euclidean"){
+        private$.metric[[name]] <- function(x){
+          xx = rowSums(x * x)
+          pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
+          pdist <- pdist + xx
+          pdist <- pdist - 2 * x %*% t(x)
+          pdist 
+        }
+      }
+      
+      else if (type == "mahalanobis"){
+        invS <- solve(mahalanobis_cov)
+        private$.metric[[name]] <- function(x){
+          xx = rowSums(x %*% invS * x)
+          pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
+          pdist <- pdist + xx
+          pdist <- pdist - 2 * x %*% invS %*% t(x)
+          pdist
+        }
+      }
+      
+      else if (type == "davidson"){
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        if (is.na(strata)) stop("Bad argument")
+        unwanted_label <- private$.labels[[strata]]
+        for (j in unique(unwanted_label))
+        {
+          mask <- unwanted_label != j
+          temp <- t(private$.reduced[mask, ]) - colSums(private$.reduced[!mask, ])
+          B <- B + temp %*% t(temp)
+        }
+        B <- B / dim(private$.reduced)[1]
+        
+        # Call this function recursively to get a mahalanobis distance metric
+        # with B as its covariance matrix
+        # Manual is set to TRUE in calling to avoid calculating distance twice.
+        self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                           mahalanobis_cov = B)
+      }
+      
+      else if (type == "continuous_davidson"){
+        # naive implementation, optimization needed
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        n <- dim(private$.reduced)[1]
+        
+        if (is.na(strata)) stop("Bad argument")
+        unwanted_label <- private$.labels[[strata]]
+        
+        W <- euclidean_pdist2(x = unwanted_label)
+        
+        for (i in 1:n){
+          for (j in 1:n){
+            temp <- t(private$.reduced[i, ] - private$.reduced[j, ])
+            B <- B + temp %*% t(temp) * W[i, j]
+          }
+        }
+        B <- B / sum(W)
+        
+        self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                           mahalanobis_cov = B)
+      }
+      
+      else stop("Bad argument. Distance type not supported.")
+      
+      if (!manual){
+        self$measure(name = name)
+      }
+      
+      invisible(self)
+    },
+    
+    measure = function(name){
+      temp <- private$.metric[[name]](private$.reduced)
+      private$.distance_matrices[[name]] <- sqrt(temp - min(temp))
+      
+      invisible(self)
+    },
+    
+    embed = function(name, type = "tsne", ...){
+      if (!(name %in% names(private$.distance_matrices))){
+        stop(paste0("Bad argument: distance name '", name, "' does not exist."))
+      }
+      
+      if (type == "tsne"){
+        private$.embeddings[[name]] = Rtsne(private$.distance_matrices[[name]], 
+                                           is_distance = T, ...)$Y
+      }
+      else if (type == "umap"){
+        config <- umap.defaults
+        config$input <- "dist"
+        private$.embeddings[[name]] <- umap(private$.distance_matrices[[name]],
+                                           config = config)$layout
+      }
+      else if (type == "mds"){
+        stop("Not implemented.")
+      }
+      else{
+        stop("Bad argument: unknown embedding type")
+      }
+      invisible(self)
+    },
+    
+    # public methods without side effects
+    plot_reduced = function(label_name, dims = c(1, 2), ...){
+      if (length(dims) <= 2){
+        p <- plot(private$.reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
+      }
+      else if (length(dims) > 2){
+        p <- pairs(private$.reduced[, dims], col=factor(private$.labels[[label_name]]), ...)
+      }
+      else stop("Bad argument")
+      
+      return(p)
+    },
+    
+    plot_embedding = function(name, label_name, ...){
+      p <- plot(private$.embeddings[[name]], col=factor(private$.labels[[label_name]]), ...)
+      return(p)
+    }
+  ),
 
-varactor <- function(x, bad_labels, strength = 1, pca_dim = 50, pca = TRUE)
-{
-  if (pca)
-  {
-    pca_res <- prcomp(t(expr_matrix), rank.=pca_dim)
-    x <- pca_res$x
-  }
-  B <- bad_corr(x, bad_labels)
-  pdist <- sqrt(mahalanobis_pdist2(x, B=B, t=strength))
-  pdist
-}
+  private = list(
+    
+    # private fields
+    .raw = NA,        # a list of datasets (as matrices)
+    .normalized = NA, # a list of datasets (as matrices)
+    .combined = NA,   # a single combined matrix
+    .reduced = NA,    # a  
+    
+    .raw_labels = NA,
+    .labels = NA,
+    
+    .distance_matrices = list(),
+    .embeddings = list(),
+    
+    .metric = list(),
+
+    # verbosity
+    .verbose = NA,
+    .verbose_print = NA,
+    .verbose_write = NA
+    
+  ),
+  
+  active = list(
+    verbose = function(value) {
+      if (missing(value)) {
+        return(private$.verbose)
+      } 
+      else {
+        if (identical(value, F)){
+          private$.verbose_print <- function(x, ...){invisible(x)} # supress output, but still return the same value as the normal print
+          private$.verbose_write <- function(...){} # Doing nothing and return NULL (also the same as a normal writeLines)
+        }
+        else if (identical(value, T)){
+          private$.verbose_print <- print
+          private$.verbose_write <- writeLines
+        }
+        else stop("Bad argument: must be logical TRUE or FALSE")
+        
+        private$.verbose <- value
+      }
+    },
+    
+    raw = function(value){
+      if (missing(value)){
+        return(private$.raw)
+      }
+      else{
+        private$.verbose_write("Note: You are changing the raw expression. 
+                               This neither automatically perform preprocessing or recalculation the results. 
+                               You may consider to run normalize() and reduce() manually.")
+        private$.raw <- value
+      }
+    },
+    
+    normalized = function(value){
+      if (missing(value)) {
+        return(private$.normalized)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the normalized expression.")
+        private$.verbose_write("This may cause discrepancy between it and the up/down stream data.")
+        private$.normalized <- value
+      }
+    },
+    
+    combined = function(value){
+      if (missing(value)) {
+        return(private$.combined)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the combined expression.")
+        private$.verbose_write("This may cause discrepancy between it and the up/down stream data.")
+        private$.combined <- value
+      }
+    },
+    
+    reduced = function(value){
+      if (missing(value)) {
+        return(private$.reduced)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the reduced expression. 
+                               This does not automatically recalculation the results. 
+                               Also, discrepancy is possible between the raw data, normalized data and this newly assigned reduced data.")
+        private$.reduced <- value
+      }
+    },
+    
+    labels = function(value){
+      if (missing(value)) {
+        return(private$.labels)
+      } 
+      else{
+        private$.verbose_write("Note: You are changing the labels.")
+        private$.labels <- value
+      }
+    }
+  )
+)
+
