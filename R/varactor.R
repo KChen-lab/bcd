@@ -139,7 +139,7 @@ Varactor <- R6Class(
       private$.verbose_write("Calculating PCA...")
       private$.verbose_write(paste0("Dimensionality is set to ", 
                                     reduce_dim, 
-                                    ". If this is not preferred provide a value for parameter reduce."))
+                                    ". If this is not preferred provide a value for parameter reduce_dim"))
       private$.verbose_write("Depending on the data size, this may take a few minutes...")
       
       gene_Sds <- rowSds(private$.combined)
@@ -277,7 +277,26 @@ Varactor <- R6Class(
     plot_embedding = function(name, label_name, ...){
       p <- plot(private$.embeddings[[name]], col=factor(private$.labels[[label_name]]), ...)
       return(p)
+    },
+    
+    plot = function(name, what, label_name, mini = FALSE){
+      if (what == 'embedding'){
+        if (mini){
+          plot_embedding(name, label_name)
+        }
+        else{
+          df <- data.frame(x = private$.embeddings[[name]][, 1], 
+                           y = private$.embeddings[[name]][, 2],
+                           l = private$.labels[[label_name]])
+          return(ggplot(df) + geom_point(aes(x=x, y=y, color=l))  + labs(color=label_name) )
+        }
+      }
+      else{
+        stop("Not implemented.")
+      }
+        
     }
+    
   ),
 
   private = list(
