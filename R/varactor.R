@@ -155,8 +155,27 @@ Varactor <- R6Class(
       invisible(self)
     },
     
+    clean = function(what = "auto"){
+      if (what == "auto"){
+        if (!identical(private$.normalized, NA)) private$.raw <- NA 
+        if (!identical(private$.combined, NA)) private$.normalized <- NA 
+        if (!identical(private$.reduced, NA)) private$.combined <- NA 
+      }
+      else if (what == "raw"){
+        private$.raw <- NA 
+      }
+      else if (what == "normalized"){
+        private$.normalized <- NA
+      }
+      else if (what == "combined"){
+        private$.combined <- NA
+      }
+      gc()
+      invisible(self)
+    },
+    
     define_metric = function(name, type = "euclidean", manual = TRUE,
-                               strata = NA, mahalanobis_cov = NA){
+                               strata = NA, mahalanobis_cov = NA, time_label = NA){
       # Be very careful that all variables in the functions are in the local
       # environment (closure) to avoid untrackable bugs.
       if (type == "euclidean"){
@@ -187,7 +206,7 @@ Varactor <- R6Class(
         for (j in unique(unwanted_label))
         {
           mask <- unwanted_label != j
-          temp <- t(private$.reduced[mask, ]) - colSums(private$.reduced[!mask, ])
+          temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
           B <- B + temp %*% t(temp)
         }
         B <- B / dim(private$.reduced)[1]
@@ -216,6 +235,29 @@ Varactor <- R6Class(
           }
         }
         B <- B / sum(W)
+        
+        self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                           mahalanobis_cov = B)
+      }
+      
+      else if (type == "temporal_davidson"){
+        # naive implementation, optimization needed
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        n <- dim(private$.reduced)[1]
+        
+        if (is.na(time_label)) stop("Bad argument: must provide time_label")
+        unwanted_label <- time_label
+        unique_unwanted_label <- unique(unwanted_label)
+        W <- 1 / sqrt(euclidean_pdist2(x = unique_unwanted_label, y = unwanted_label) + 1.)
+        
+        for (j in unique_unwanted_label)
+        {
+          mask <- unwanted_label != j
+          temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
+          temp <- t(t(temp) * W[j, ])
+          B <- B + temp %*% t(temp)
+        }
+        B <- B / sum(W ** 2)
         
         self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
                            mahalanobis_cov = B)
