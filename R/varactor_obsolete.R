@@ -1,6 +1,7 @@
 
 mahalanobis_pdist2 <- function(x, y = NULL, B = NULL, t=1)
 {
+  x <- t(t(x))
   if (is.null(y)) y = x
   if (is.null(B)) B = diag(dim(x)[2])
   invB <- solve(B) %^% t

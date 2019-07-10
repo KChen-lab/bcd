@@ -62,12 +62,16 @@ combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_wi
         )
 }
 
-euclidean_pdist2 <- function(x){
+euclidean_pdist2 <- function(x, y){
+  x <- as.matrix(x)
+  if (missing(y)) y <- x
+  else y <- as.matrix(y)
   xx = rowSums(x * x)
-  pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
+  yy = rowSums(y * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(xx)))
   pdist <- pdist + xx
-  pdist <- pdist - 2 * x %*% t(x)
-  pdist 
+  pdist <- pdist - 2 * x %*% t(y)
+  pdist
 }
 
 Varactor <- R6Class(
@@ -175,7 +179,7 @@ Varactor <- R6Class(
     },
     
     define_metric = function(name, type = "euclidean", manual = TRUE,
-                               strata = NA, mahalanobis_cov = NA, time_label = NA){
+                               strata, mahalanobis_cov, strength = 1, time_label, time_of_strata, reg=1., pow=1.){
       # Be very careful that all variables in the functions are in the local
       # environment (closure) to avoid untrackable bugs.
       if (type == "euclidean"){
@@ -214,8 +218,12 @@ Varactor <- R6Class(
         # Call this function recursively to get a mahalanobis distance metric
         # with B as its covariance matrix
         # Manual is set to TRUE in calling to avoid calculating distance twice.
+        if (strength == 1)
         self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
                            mahalanobis_cov = B)
+        if (strength == 2)
+          self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                             mahalanobis_cov = B %*% B)
       }
       
       else if (type == "continuous_davidson"){
@@ -245,14 +253,39 @@ Varactor <- R6Class(
         B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
         n <- dim(private$.reduced)[1]
         
-        if (is.na(time_label)) stop("Bad argument: must provide time_label")
+        if (missing(time_label)) stop("Bad argument: must provide time_label")
         unwanted_label <- time_label
         unique_unwanted_label <- unique(unwanted_label)
         W <- 1 / sqrt(euclidean_pdist2(x = unique_unwanted_label, y = unwanted_label) + 1.)
         
-        for (j in unique_unwanted_label)
+        for (j in 1:length(unique_unwanted_label))
         {
-          mask <- unwanted_label != j
+          mask <- unwanted_label != unique_unwanted_label[j]
+          temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
+          temp <- t(t(temp) * W[j, ])
+          B <- B + temp %*% t(temp)
+        }
+        B <- B / sum(W ** 2)
+        
+        self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                           mahalanobis_cov = B)
+      }
+      
+      else if (type == "mixed_davidson"){
+        # naive implementation, optimization needed
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        n <- dim(private$.reduced)[1]
+        
+        if (missing(time_label)) stop("Bad argument: must provide time_label for strata")
+        if (missing(strata)) stop("Bad argument: must provide strata")
+        unwanted_label <- private$.labels[[strata]]
+        unique_unwanted_label <- unique(unwanted_label)
+        
+        W <- 1 / sqrt(euclidean_pdist2(x = time_of_strata, y = time_label) + reg) ** pow
+        
+        for (j in 1:length(unique_unwanted_label))
+        {
+          mask <- unwanted_label != unique_unwanted_label[j]
           temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
           temp <- t(t(temp) * W[j, ])
           B <- B + temp %*% t(temp)
@@ -321,16 +354,17 @@ Varactor <- R6Class(
       return(p)
     },
     
-    plot = function(name, what, label_name, mini = FALSE){
+    plot = function(name, what, label_name, basic = FALSE){
       if (what == 'embedding'){
-        if (mini){
+        if (basic){
           plot_embedding(name, label_name)
         }
         else{
           df <- data.frame(x = private$.embeddings[[name]][, 1], 
                            y = private$.embeddings[[name]][, 2],
                            l = private$.labels[[label_name]])
-          return(ggplot(df) + geom_point(aes(x=x, y=y, color=l))  + labs(color=label_name) )
+          return(ggplot(df) + geom_point(aes(x=x, y=y, color=l))  + labs(color=label_name) +
+                   ggtitle(paste(name, what)))
         }
       }
       else{
