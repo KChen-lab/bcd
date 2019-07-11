@@ -287,7 +287,7 @@ Varactor <- R6Class(
         {
           mask <- unwanted_label != unique_unwanted_label[j]
           temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
-          temp <- t(t(temp) * W[j, ])
+          temp <- t(t(temp) * W[j, unwanted_label != unique_unwanted_label[j]])
           B <- B + temp %*% t(temp)
         }
         B <- B / sum(W ** 2)
@@ -354,17 +354,21 @@ Varactor <- R6Class(
       return(p)
     },
     
-    plot = function(name, what, label_name, basic = FALSE){
+    plot = function(name, what, label_name, size=1., manual = FALSE){
       if (what == 'embedding'){
-        if (basic){
-          plot_embedding(name, label_name)
+        if (!manual){
+          df <- data.frame(x = private$.embeddings[[name]][, 1], 
+                         y = private$.embeddings[[name]][, 2],
+                         l = private$.labels[[label_name]])
+        
+          return(ggplot(df) + geom_point(aes(x=x, y=y, color=l), size=size) + labs(color=label_name) +
+                   ggtitle(paste(name, what)))
         }
         else{
           df <- data.frame(x = private$.embeddings[[name]][, 1], 
-                           y = private$.embeddings[[name]][, 2],
-                           l = private$.labels[[label_name]])
-          return(ggplot(df) + geom_point(aes(x=x, y=y, color=l))  + labs(color=label_name) +
-                   ggtitle(paste(name, what)))
+                           y = private$.embeddings[[name]][, 2])
+          df[names(private$.labels)] <- private$.labels
+          return(df)
         }
       }
       else{
