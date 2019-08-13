@@ -116,10 +116,15 @@ Varactor <- R6Class(
       }
     },
     
-    normalize = function(){
+    normalize = function(cell_normalize = TRUE, 
+                         log_transform = FALSE){
       private$.verbose_write("Normalizing data for each dataset...")
       private$.verbose_write("Note that the nomalization is based all the genes available in each dataset.")
-      private$.normalized <- lapply(private$.raw, function(x) t(t(x) / colMeans(x)))
+      if (cell_normalize) private$.normalized <- lapply(private$.raw, function(x) t(t(x) / colMeans(x)))
+      else private$.normalized <- private$.raw
+      
+      if (log_transform) private$.normalized <- lapply(private$.normalized, log1p)
+      
       invisible(self)
     },
     
@@ -179,7 +184,8 @@ Varactor <- R6Class(
     },
     
     define_metric = function(name, type = "euclidean", manual = TRUE,
-                               strata, mahalanobis_cov, strength = 1, time_label, time_of_strata, reg=1., pow=1.){
+                             strata, mahalanobis_cov, strength = 1, 
+                             time_label, time_of_strata, reg=1., pow=1.){
       # Be very careful that all variables in the functions are in the local
       # environment (closure) to avoid untrackable bugs.
       if (type == "euclidean"){
@@ -189,6 +195,19 @@ Varactor <- R6Class(
           pdist <- pdist + xx
           pdist <- pdist - 2 * x %*% t(x)
           pdist 
+        }
+      }
+      
+      else if (type == "canberra"){
+        private$.metric[[name]] <- function(x){
+          pdist <- matrix(0, ncol=dim(x)[1], nrow = dim(x)[1])
+          for (i in 1:dim(x)[1]){
+            for (j in i:dim(x)[1]){
+              pdist[i, j] <- sum(abs(x[i, ] - x[j, ]) / (abs(x[i, ]) + abs(x[j, ])))
+              pdist[j, i] <- pdist[i, j]
+            }
+          }
+          return(pdist ** 2)
         }
       }
       
@@ -262,7 +281,7 @@ Varactor <- R6Class(
         {
           mask <- unwanted_label != unique_unwanted_label[j]
           temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
-          temp <- t(t(temp) * W[j, ])
+          temp <- t(t(temp) * W[j, mask])
           B <- B + temp %*% t(temp)
         }
         B <- B / sum(W ** 2)
@@ -287,7 +306,7 @@ Varactor <- R6Class(
         {
           mask <- unwanted_label != unique_unwanted_label[j]
           temp <- t(private$.reduced[mask, ]) - colMeans(private$.reduced[!mask, ])
-          temp <- t(t(temp) * W[j, unwanted_label != unique_unwanted_label[j]])
+          temp <- t(t(temp) * W[j, mask])
           B <- B + temp %*% t(temp)
         }
         B <- B / sum(W ** 2)
@@ -312,11 +331,13 @@ Varactor <- R6Class(
       invisible(self)
     },
     
-    embed = function(name, type = "tsne", ...){
+    embed = function(name, type = "tsne", scaling = 1., custome_func, ...){
       if (!(name %in% names(private$.distance_matrices))){
         stop(paste0("Bad argument: distance name '", name, "' does not exist."))
       }
-      
+      if (type == "customize"){
+        private$.embeddings[[name]] <- func(private$.distance_matrices[[name]])
+      }
       if (type == "tsne"){
         private$.embeddings[[name]] = Rtsne(private$.distance_matrices[[name]], 
                                            is_distance = T, ...)$Y
@@ -326,6 +347,26 @@ Varactor <- R6Class(
         config$input <- "dist"
         private$.embeddings[[name]] <- umap(private$.distance_matrices[[name]],
                                            config = config)$layout
+      }
+      else if (type == "umap_3d"){
+        config <- umap.defaults
+        config$input <- "dist"
+        config$n_components <- 3
+        private$.embeddings[[name]] <- umap(private$.distance_matrices[[name]],
+                                            config = config)$layout
+      }
+      else if (type == "rbf_umap"){
+        config <- umap.defaults
+        config$input <- "dist"
+        private$.embeddings[[name]] <- umap(sqrt(1-exp(-private$.distance_matrices[[name]] ** 2 / (2 * scaling ** 2))),
+                                            config = config)$layout
+      }
+      else if (type == "rbf_umap_3d"){
+        config <- umap.defaults
+        config$input <- "dist"
+        config$n_components <- 3
+        private$.embeddings[[name]] <- umap(sqrt(1-exp(-private$.distance_matrices[[name]] ** 2 / (2 * scaling ** 2))),
+                                            config = config)$layout
       }
       else if (type == "mds"){
         stop("Not implemented.")
@@ -475,6 +516,24 @@ Varactor <- R6Class(
       else{
         private$.verbose_write("Note: You are changing the labels.")
         private$.labels <- value
+      }
+    },
+    
+    embeddings = function(value){
+      if (missing(value)){
+        return(private$.embeddings)
+      }
+      else{
+        stop("Cannot edit embedding.")
+      }
+    },
+    
+    steal = function(value){
+      if (missing(value)){
+        return(private)
+      }
+      else{
+        private <- value
       }
     }
   )
