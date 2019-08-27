@@ -104,10 +104,10 @@ obj <- Varactor$new(data = list(expr=t(mat)),
 ```
 
 ```{r}
-#obj$normalize()
-obj$normalized <- obj$raw
-obj$combine(sd_threshold = .0, cv_threshold = 1.)
-obj$reduce(reduce_dim = 40)
+obj$normalize()
+#obj$normalized <- obj$raw
+obj$combine(sd_threshold = .0, cv_threshold = 0.5)
+obj$reduce(reduce_dim = 50)
 ```
 
 ```{r}
@@ -120,7 +120,7 @@ obj$plot("primary", "embedding", "age")
 
 
 ```{r}
-set.seed(0)
+set.seed(1)
 obj$define_metric("alternative", "davidson", strata = 'plate')$measure("alternative")$embed("alternative", "tsne")
 obj$plot("alternative", "embedding", "type")
 obj$plot("alternative", "embedding", "plate")
@@ -132,6 +132,15 @@ obj$plot("alternative", "embedding", "type2")
 ```
 
 ```{r}
+set.seed(0)
+obj$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "umap")
+obj$plot("primary", "embedding", "type")
+obj$plot("primary", "embedding", "plate")
+obj$plot("primary", "embedding", "age")
+```
+
+
+```{r}
 obj$define_metric("alternative", "davidson", strata = 'plate')$measure("alternative")$embed("alternative", "umap")
 obj$plot("alternative", "embedding", "type")
 obj$plot("alternative", "embedding", "plate")
@@ -140,5 +149,27 @@ obj$plot("alternative", "embedding", "age")
 obj$labels$type2 <- obj$labels$type
 obj$labels$type2[obj$labels$type2 %in% c('Early RPCs', 'Intermediate RPCs', 'Late RPCs')] = 'RPCs'
 obj$plot("alternative", "embedding", "type2")
+```
+
+```{r}
+time_of_strata <- c(14, 14, 14, 18, 18, 18, 22, 22, 22)
+names(time_of_strata) <- unique(obj$labels$plate)
+
+```
+
+```{r}
+time_label <- time_of_strata[obj$labels$plate]
+```
+
+
+```{r}
+obj$define_metric("mixed", "mixed_davidson", strata = 'plate', time_label = time_label, time_of_strata = time_of_strata, reg = 2., pow = 1.)$measure("mixed")$embed("mixed", "umap")
+obj$plot("mixed", "embedding", "type")
+obj$plot("mixed", "embedding", "plate")
+obj$plot("mixed", "embedding", "age")
+
+obj$labels$type2 <- obj$labels$type
+obj$labels$type2[obj$labels$type2 %in% c('Early RPCs', 'Intermediate RPCs', 'Late RPCs')] = 'RPCs'
+obj$plot("mixed", "embedding", "type2")
 ```
 
