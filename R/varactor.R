@@ -1,8 +1,9 @@
 library(R6)
-library(matrixStats)
+#library(matrixStats)
 library(Rtsne)
 library(umap)
 library(ggplot2)
+
 
 # The core of varactor is distance.
 # So there should be three fields:
@@ -23,6 +24,8 @@ library(ggplot2)
 # How to define a pdist2 function? It should be a function only accept one matrix as input...
 
 # The normalization should be performed before getting the common genes...
+
+rowSds <- function(x) sqrt(rowMeans((x - rowMeans(x)) ** 2) / dim(x)[2])
 
 combine_labels <- function(labels, keep_sample_name = TRUE, data = NULL, data_width = NULL){
   
@@ -141,10 +144,13 @@ Varactor <- R6Class(
       
       temp <- lapply(temp, function(x) (x - rowMeans(x)) / rowSds(x))
       
+      for (i in temp)
+        private$.verbose_write(paste(dim(i)))
+      
       private$.combined <- do.call(cbind, temp)
     },
     
-    reduce = function(reduce_dim = 50, importance = "equal"){
+    reduce = function(reduce_dim = 50, importance = "equal", use_irlba = T){
       private$.verbose_write("Calculating PCA...")
       private$.verbose_write(paste0("Dimensionality is set to ", 
                                     reduce_dim, 
@@ -155,8 +161,13 @@ Varactor <- R6Class(
       private$.verbose_write(paste0(sum(gene_Sds == 0), " constant genes are not considered in PCA."))
       
       if (importance == "equal"){
-        private$.reduced <- prcomp(t(private$.combined[gene_Sds > 0, ]), 
+        if (!use_irlba)
+          private$.reduced <- prcomp(t(private$.combined[gene_Sds > 0, ]), 
                                    rank.=reduce_dim, scale. = TRUE)$x
+        else
+          require(irlba)
+          private$.reduced <- prcomp_irlba(x = t(private$.combined[gene_Sds > 0, ]), 
+                                    n = reduce_dim, scale. = T)$x
       }
       else{
         stop("Not implemented.")
