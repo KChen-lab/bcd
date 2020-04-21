@@ -9,6 +9,16 @@ library(ggplot2)
 
 rowSds <- function(x) sqrt(rowMeans((x - rowMeans(x)) ** 2) / dim(x)[2])
 
+`%-%` <- function(x, y){
+  if (dim(x)[1] == 1 && dim(y)[2] == 1){
+    return (x[rep(1, dim(y)[1]), ] - y[,,drop=T])
+  } else if (dim(x)[2] == 1 && dim(y)[1] == 1){
+    return (x[,,drop=T] - y[rep(1, dim(x)[1]), ])
+  } else {
+    stop('')
+  }
+}
+
 euclidean_pdist2 <- function(x, y){
   x <- as.matrix(x)
   if (missing(y)) y <- x
@@ -21,13 +31,26 @@ euclidean_pdist2 <- function(x, y){
   pdist
 }
 
-mahalanobis_pdist <- function(x, B){
+mpdist <- function(x, B){
   invB <- solve(B)
   xx = rowSums(x %*% invB * x)
   pdist <- t(matrix(rep(xx, length(xx)), ncol=length(xx)))
   pdist <- pdist + xx
   pdist <- pdist - 2 * x %*% invB %*% t(x)
   sqrt(pdist - min(pdist, 0))
+}
+
+gmpdist <- function(x, B){
+  eig <- eigen(B, symmetric=TRUE)
+  temp <- x %*% eig$vectors
+  D <- 0
+  w <- eig$values / max(eig$values)
+  #w <- sqrt(w)
+  #w <- 1 / w
+  for (i in 1:length(w)){
+    D <- D + w[i] * ((temp[, i, drop=F] %-% t(temp[, i, drop=F])) ** 2)
+  }
+  sqrt(D - min(D, 0))
 }
 
 categorical_boc_pdist <- function(expr, bad_label)
@@ -37,13 +60,25 @@ categorical_boc_pdist <- function(expr, bad_label)
   for (j in unique(bad_label))
   {
     mask <- bad_label != j
-    print(dim(expr))
-    print(length(mask))
     temp <- t(expr[mask, ]) - colMeans(expr[!mask, ])
     B <- B + temp %*% t(temp)
   }
   B <- B / dim(expr)[1]
-  mahalanobis_pdist(expr, B)
+  mpdist(expr, B)
+}
+
+categorical_boc_pdist2 <- function(expr, bad_label)
+{
+  expr <- as.matrix(expr)
+  B <- matrix(0, ncol=dim(expr)[2], nrow=dim(expr)[2])
+  for (j in unique(bad_label))
+  {
+    mask <- bad_label != j
+    temp <- t(expr[mask, ]) - colMeans(expr[!mask, ])
+    B <- B + temp %*% t(temp)
+  }
+  B <- B / dim(expr)[1]
+  gmpdist(expr, B)
 }
 
 longitudinal_boc_pdist <- function(expr, bad_label, time_label, reg = 1., pow = 1.){
@@ -81,7 +116,9 @@ RunBoc <- function(object, batch, method='categorical', from='pca', to='umap',
   if (verbose) cat("Calculating pairwise distances...")
   bad_labels <- lapply(X = object[[batch]], function(x) sub(x, ' ', '_'))
   bad_label <- do.call(paste, unname(object[[batch]]))
-  if (method == 'categorical'){
+  if (method == 'categorical2'){
+    pdist <- categorical_boc_pdist2(object@reductions[[from]]@cell.embeddings, bad_label)
+  } else if (method == 'categorical'){
     pdist <- categorical_boc_pdist(object@reductions[[from]]@cell.embeddings, bad_label)
   } else if (method == 'longitudinal') {
     if(missing(day)){
@@ -93,22 +130,26 @@ RunBoc <- function(object, batch, method='categorical', from='pca', to='umap',
   }
   
   if (verbose) cat("Calculating embedding...")
-  object@reductions[['boc']] <- new('DimReduc')
-  object@reductions[['boc']]@key <- 'BOC_'
-  object@reductions[['boc']]@assay.used <- object@reductions[[from]]@assay.used
+  object@reductions[[reduction.name]] <- new('DimReduc')
+  object@reductions[[reduction.name]]@key <- 'BOC_'
+  object@reductions[[reduction.name]]@assay.used <- object@reductions[[from]]@assay.used
   if (to == 'umap'){
     config <- umap.defaults
     config$input <- "dist"
-    object@reductions[['boc']]@cell.embeddings = umap(pdist, config = config)$layout
+    object@reductions[[reduction.name]]@cell.embeddings = umap(pdist, config = config)$layout
   } else if (to == 'umap3d'){
       config <- umap.defaults
       config$input <- "dist"
       config$n_components <- 3
-      object@reductions[['boc']]@cell.embeddings = umap(pdist, config = config)$layout
+      object@reductions[[reduction.name]]@cell.embeddings = umap(pdist, config = config)$layout
   } else if (to == 'tsne'){
-    object@reductions[['boc']]@cell.embeddings = Rtsne(pdist, is_distance = T)$Y
+    object@reductions[[reduction.name]]@cell.embeddings = Rtsne(pdist, is_distance = T)$Y
   } else {
     stop('Unknown embedding method. Please choose from umap, umap3d and tsne.')
   }
+  
+  # object@reductions[[reduction.name]]@feature.loadings <- pdist
+  colnames(object@reductions[[reduction.name]]@cell.embeddings) <- paste0('BOC_', 1:dim(object@reductions[[reduction.name]]@cell.embeddings)[2])
+  rownames(object@reductions[[reduction.name]]@cell.embeddings) <- rownames(object@reductions[[from]]@cell.embeddings)
   return(object)
 }
