@@ -1,0 +1,44 @@
+---
+title: "GSE111014"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(patchwork)
+library(Seurat)
+```
+
+
+```{r}
+cll <- CreateSeuratObject(Read10X("../data/GSE111014/"), project = "cll", min.cells = 3, min.features = 200)
+cll
+```
+
+```{r}
+cll[['percent.mt']] <- PercentageFeatureSet(cll, pattern = "^MT-")
+VlnPlot(cll, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+plot1 <- FeatureScatter(cll, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cll, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+```
+
+Specifically, single-cell profiles with less than 200 detected genes (indicative of no cell in the droplet), more than 3000 detected genes (indicative of cell duplicates), or more than 15% of UMIs stemming from mitochondrial genes were discarded.
+
+```{r}
+cll <- subset(cll, subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 15)
+cll
+```
+Read counts were normalized dividing by the total UMI count in each cell, multiplied by a factor of 10,000, and log transformed.
+```{r}
+cll <- NormalizeData(cll, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+The number of UMIs per cell and the percent of mitochondrial reads per cell were then regressed out using Seurat’s standard analysis pipeline.
+```{r}
+cll <- ScaleData(cll, vars.to.regress = c("percent.mt", "nCount_RNA"), features = rownames(cll))
+```
+

@@ -317,12 +317,11 @@ obj2$reduce()
 ### Euclidean distance
 Coloring: cell types
 ```{r}
-obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "umap")$plot_embedding("primary", "type", pch=20)
-```
+set.seed(0)
+obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "umap")
 
-Coloring: sequencing technologies
-```{r}
-obj2$plot_embedding("primary", "sample", pch=20)
+obj2$plot("primary", "embedding", "type")
+obj2$plot("primary", "embedding", "sample")
 ```
 
 Apparently, difference in technologies are shown heavily in the embedding, hindering our exploration to the biological meanings.
@@ -332,11 +331,10 @@ Apparently, difference in technologies are shown heavily in the embedding, hinde
 We use davidson distance to control the difference introduced by the techonology differences.
 
 ```{r}
-obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "umap")$plot_embedding("alternative", "type", pch=20)
-```
-
-```{r}
-obj2$plot_embedding("alternative", "sample", pch=20)
+set.seed(0)
+obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "umap")
+obj2$plot("alternative", "embedding", "type")
+obj2$plot("alternative", "embedding", "sample")
 ```
 
 The cell types are more tightly clustered and the difference between the technologies are decreased.
@@ -347,19 +345,22 @@ The same effects also appears in the t-SNE plots.
 ### Euclidean distance.
 
 ```{r}
-obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")$plot_embedding("primary", "type", pch=20)
-```
-
-```{r}
-obj2$plot_embedding("primary", "sample", pch=20)
+set.seed(0)
+obj2$define_metric("primary", "euclidean")$measure("primary")$embed("primary", "tsne")
+obj2$plot("primary", "embedding", "type")
+obj2$plot("primary", "embedding", "sample")
 ```
 
 ### Davidson distance
 
 ```{r}
-obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")$plot_embedding("alternative", "type", pch=20)
+set.seed(0)
+obj2$define_metric("alternative", "davidson", strata = "sample")$measure("alternative")$embed("alternative", "tsne")
+
+obj2$plot("alternative", "embedding", "type")
+obj2$plot("alternative", "embedding", "sample")
 ```
 ```{r}
-obj2$plot_embedding("alternative", "sample", pch=20)
+
 ```
 

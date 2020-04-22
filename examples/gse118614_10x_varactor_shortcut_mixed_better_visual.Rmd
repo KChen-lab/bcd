@@ -138,20 +138,37 @@ obj$clean()
 set.seed(0)
 obj$define_metric("primary", "euclidean")$measure("primary")
 obj$embed("primary", "umap")
+```
+
+
+```{r, echo=FALSE, dpi=300, fig.width=15, fig.height=12}
+
 obj$plot("primary", "embedding", "type", size=.1)
 obj$plot("primary", "embedding", "plate")
 obj$plot("primary", "embedding", "age")
 ``` 
 
-```{r}
+```{r, echo=FALSE, dpi=300, fig.width=15, fig.height=12}
 ggplot(obj$plot("primary", "embedding", manual=TRUE)) + 
-  geom_point(aes(x=x, y=y, color=type), size=.5) + 
+  geom_point(aes(x=x, y=y, color=type), size=1.5) + 
   guides(color = guide_legend(override.aes = list(size=3.))) +
   ggtitle('Primary embedding') + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
 panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
 ```
 
+```{r, echo=FALSE, dpi=300, fig.width=15, fig.height=12}
+ggplot(obj$plot("primary", "embedding", manual=TRUE)) + 
+  geom_point(aes(x=x, y=y, color=plate), size=1.5) + 
+  guides(color = guide_legend(override.aes = list(size=3.))) +
+  ggtitle('Corrected embedding') + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"))  + theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),legend.position="none",
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank())
+```
 
 ```{r}
 set.seed(0)
@@ -175,23 +192,24 @@ obj$plot("temporal", "embedding", "age")
 
 ```
 
-```{r}
+```{r, echo=FALSE, dpi=300, fig.width=15, fig.height=12}
 ggplot(obj$plot("temporal", "embedding", manual=TRUE)) + 
-  geom_point(aes(x=x, y=y, color=type), size=.5) + 
+  geom_point(aes(x=x, y=y, color=type), size=1.5) + 
   guides(color = guide_legend(override.aes = list(size=3.))) +
   ggtitle('Corrected embedding') + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
 panel.background = element_blank(), axis.line = element_line(colour = "black"))
 ```
 
 
-```{r}
-set.seed(0)
-obj$define_metric("temporal", "mixed_davidson", strata='age', time_label = time_label, time_of_strata=time_of_strata, reg=0.1, pow=1.)$measure("temporal")
-obj$embed("temporal", "umap")
-obj$plot("temporal", "embedding", "type") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-panel.background = element_blank(), axis.line = element_line(colour = "black"))
-obj$plot("temporal", "embedding", "plate")
-obj$plot("temporal", "embedding", "age")
+```{r, echo=FALSE, dpi=300, fig.width=30, fig.height=24}
+ggplot(obj$plot("temporal", "embedding", manual=TRUE)) + 
+  geom_point(aes(x=x, y=y, color=plate), size=1.5) + 
+  guides(color = guide_legend(override.aes = list(size=5.), ncol = 7)) +
+  ggtitle('Primary embedding') + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black")) +theme(legend.position="bottom") +
+   theme(panel.background=element_rect(fill="transparent",colour=NA),
+      plot.background=element_rect(fill="transparent",colour=NA),
+      legend.key = element_rect(fill = "transparent", colour = "transparent"))
 ```
 
 ```{r}
