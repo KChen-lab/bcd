@@ -222,6 +222,34 @@ Varactor <- R6Class(
         }
       }
       
+      else if (type == "davidson_mod"){
+        B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
+        if (is.na(strata)) stop("Bad argument")
+        unwanted_label <- private$.labels[[strata]]
+        cnt = 0;
+        for (j in 1:dim(private$.reduced)[1])
+        {
+          for (k in 1:dim(private$.reduced)[1])
+          if (unwanted_label[i] != unwanted_label[j])
+          {
+            cnt <- cnt + 1
+            temp <- private$.reduced[i, ] - private$.reduced[j, ]
+            B <- B + temp %*% t(temp)
+          }
+        }
+        B <- B / cnt
+        
+        # Call this function recursively to get a mahalanobis distance metric
+        # with B as its covariance matrix
+        # Manual is set to TRUE in calling to avoid calculating distance twice.
+        if (strength == 1)
+          self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                             mahalanobis_cov = B)
+        if (strength == 2)
+          self$define_metric(name = name, type = "mahalanobis", manual = TRUE,
+                             mahalanobis_cov = B %*% B)
+      }
+      
       else if (type == "davidson"){
         B <- matrix(0, ncol=dim(private$.reduced)[2], nrow=dim(private$.reduced)[2])
         if (is.na(strata)) stop("Bad argument")
