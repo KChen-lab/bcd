@@ -1,0 +1,207 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+```
+
+
+```{r}
+mat <- list()
+mat$HC1 <- Read10X_h5(filename = "../data/COVID-19/GSM4475048_C51_filtered_feature_bc_matrix.h5")
+mat$HC2 <- Read10X_h5(filename = "../data/COVID-19/GSM4475049_C52_filtered_feature_bc_matrix.h5")
+mat$HC3 <- Read10X_h5(filename = "../data/COVID-19/GSM4475050_C100_filtered_feature_bc_matrix.h5")
+mat$HC4 <- Read10X(data.dir = "../data/COVID-19/GSM3660650/")
+
+mat$M1 <- Read10X_h5(filename = "../data/COVID-19/GSM4339769_C141_filtered_feature_bc_matrix.h5")
+mat$M2 <- Read10X_h5(filename = "../data/COVID-19/GSM4339770_C142_filtered_feature_bc_matrix.h5")
+mat$M3 <- Read10X_h5(filename = "../data/COVID-19/GSM4339772_C144_filtered_feature_bc_matrix.h5")
+
+mat$S1 <- Read10X_h5(filename = "../data/COVID-19/GSM4339773_C145_filtered_feature_bc_matrix.h5")
+mat$S2 <- Read10X_h5(filename = "../data/COVID-19/GSM4339771_C143_filtered_feature_bc_matrix.h5")
+mat$S3 <- Read10X_h5(filename = "../data/COVID-19/GSM4339774_C146_filtered_feature_bc_matrix.h5")
+mat$S4 <- Read10X_h5(filename = "../data/COVID-19/GSM4475051_C148_filtered_feature_bc_matrix.h5")
+mat$S5 <- Read10X_h5(filename = "../data/COVID-19/GSM4475052_C149_filtered_feature_bc_matrix.h5")
+mat$S6 <- Read10X_h5(filename = "../data/COVID-19/GSM4475053_C152_filtered_feature_bc_matrix.h5")
+
+meta.data <- read.delim("../data/COVID-19/all.cell.annotation.meta.txt")
+rownames(meta.data) <- meta.data$ID
+head(meta.data)
+```
+
+
+```{r}
+numbering = c(HC1 = 1,
+              HC2 = 2,
+              HC3 = 3,
+              HC4 = 4,
+              M1 = 5,
+              M2 = 6,
+              M3 = 7,
+              S1 = 9,
+              S2 = 8,
+              S3 = 10,
+              S4 = 11,
+              S5 = 12,
+              S6 = 13)
+```
+
+
+```{r}
+for (i in names(mat)){
+  colnames(mat[[i]]) <- gsub('-', '_', colnames(mat[[i]]))
+  colnames(mat[[i]]) <- gsub('1', numbering[i], colnames(mat[[i]]))
+}
+```
+
+```{r}
+for (i in names(mat)){
+ mat[[i]] <- mat[[i]][, meta.data$ID[meta.data$sample_new == i]]
+}
+```
+
+
+```{r}
+objs <- list()
+for (i in names(mat)){
+ objs[[i]] <- CreateSeuratObject(mat[[i]], project = i, meta.data = meta.data[meta.data$sample_new == i, ])
+}
+```
+
+```{r}
+obj <- merge(objs[[1]], objs[-1])
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+```{r}
+#obj <- FindNeighbors(obj, reduction = "pca", dims = 1:30, verbose=FALSE)
+#obj <- FindClusters(obj, resolution = 0.5, verbose=FALSE)
+obj$pca_clusters <- obj$seurat_clusters
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+
+```
+
+```{r fig.height=10, fig.width=10}
+DimPlot(obj, reduction = "umap", group.by = "celltype", label = T, pt.size = 0.01)
+DimPlot(obj, reduction = "umap", split.by = "celltype", group.by = "sample_new", pt.size = 0.01, ncol=3)
+```
+
+```{r}
+source("../R/varactor_seurat2.R")
+
+feature.time.dict = c(HC1 = 0,
+              HC2 = 0,
+              HC3 = 0,
+              HC4 = 0,
+              M1 = 1,
+              M2 = 1,
+              M3 = 1,
+              S1 = 2,
+              S2 = 2,
+              S3 = 2,
+              S4 = 2,
+              S5 = 2,
+              S6 = 2)
+ 
+obj <- RunALT(object = obj, feature.unwanted = "sample_new", dims.use = 1:30, reduction.use = "pca", 
+              feature.time.dict = feature.time.dict, reduction.name = "alt", reduction.key = "ALT_")
+```
+```{r}
+obj <- FindNeighbors(obj, reduction = "alt", dims = 1:30, verbose=FALSE, )
+obj <- FindClusters(obj, resolution = 0.5, verbose=FALSE, )
+obj$alt_clusters <- obj$seurat_clusters
+obj <- RunUMAP(obj, reduction = "alt", dims = 1:30, verbose=FALSE, reduction.name = "altumap", reduction.key = "ALTUMAP_")
+```
+
+```{r fig.height=10, fig.width=10}
+DimPlot(obj, reduction = "altumap", group.by = "celltype", label = T, pt.size = 0.01)
+DimPlot(obj, reduction = "altumap", split.by = "celltype", group.by = "sample_new", pt.size = 0.01, ncol=3)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "sample_new", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("covid_pca_sample.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "sample_new", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("covid_pca_sample.png", height=12, width=18, dpi = 100)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "celltype", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("covid_pca_label.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "celltype", label = T, repel=T, label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("covid_pca_label.png", height=12, width=18, dpi = 100)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "altumap", group.by = "sample_new", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("covid_alt_sample.pdf")
+
+DimPlot(obj, reduction = "altumap", group.by = "sample_new", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("covid_alt_sample.png", height=12, width=18, dpi = 100)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "altumap", group.by = "celltype", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("covid_alt_label.pdf")
+
+DimPlot(obj, reduction = "altumap", group.by = "celltype", label = T, repel=T, label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("covid_alt_label.png", height=12, width=18, dpi = 100)
+```
+
+

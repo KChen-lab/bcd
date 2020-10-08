@@ -1,0 +1,115 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+library(harmony)
+```
+
+
+```{r}
+library(clusterCrit)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+#data <- read.csv("../data/miller20/expr.csv")
+#rownames(data) <- data$index
+#data <- data[-1]
+#data <- as.matrix(data)
+```
+
+```{r}
+#saveRDS(object = data, file = "data.RDS")
+```
+
+```{r}
+data <- readRDS("data.RDS")
+```
+
+```{r}
+meta.data <- read.csv("../data/miller20/meta.data.csv", row.names = 1)
+```
+
+```{r}
+obj <- CreateSeuratObject(t(data), meta.data = meta.data)
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+ElbowPlot(obj)
+```
+
+
+```{r}
+ptm = proc.time()
+obj <- RunHarmony(obj, "Sample", plot_convergence = TRUE)
+proc.time() - ptm
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Cell_group", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_harmony_group.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "Cell_group", label = T, repel=T, label.size = 8,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("lung_harmony_group.png", height=12, width=18, dpi = 100)
+```
+
+```{r fig.height=8, fig.width=18}
+DimPlot(obj, reduction = "umap", group.by = "Cell_type", label = T, repel=T, label.size = 4,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_harmony_label.pdf")
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Sample", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_harmony_sample.pdf")
+
+p<-DimPlot(obj, reduction = "umap", group.by = "Sample", label.size = 12,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("lung_harmony_sample.png", height=12, width=18, dpi = 100)
+```
+
+

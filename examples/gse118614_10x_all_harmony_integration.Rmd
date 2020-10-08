@@ -10,6 +10,7 @@ This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo
 ```{r}
 rm(list=ls())
 gc()
+library(ggplot2)
 library(Matrix)
 library(Seurat)
 library(harmony)
@@ -92,41 +93,85 @@ obj$short_celltype <- short_celltype
 obj <- NormalizeData(obj, verbose=FALSE)
 obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
 obj <- ScaleData(obj, verbose = FALSE)
-obj <- RunPCA(obj, npcs = 20, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
 ElbowPlot(obj)
 ```
 
 
 ```{r}
+ptm = proc.time()
 obj <- RunHarmony(obj, "sample", plot_convergence = TRUE)
+proc.time() - ptm
 ```
 
 ```{r}
-library(clusterCrit)
+# library(clusterCrit)
 ```
 
 ```{r}
-harmony_metric <- intCriteria(obj@reductions$harmony@cell.embeddings, 
-                          as.integer(as.factor(obj$short_celltype)), 
-                          c("Silhouette"))
-harmony_metric
+#harmony_metric <- intCriteria(obj@reductions$harmony@cell.embeddings, 
+#                          as.integer(as.factor(obj$short_celltype)), 
+#                          c("Silhouette"))
+#harmony_metric
 ```
 
 ```{r}
-obj <- RunUMAP(obj, reduction = "harmony", dims = 1:20, verbose=FALSE)
+obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30, verbose=FALSE)
 ```
 
 ```{r}
-DimPlot(obj, reduction = "umap", group.by = "age", label = T)
+DimPlot(obj, reduction = "umap", group.by = "age", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_harmony_sample.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "age", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_harmony_sample.png", height=12, width=18, dpi = 100)
 ```
 
 
 ```{r}
-DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T)
+DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_harmony_label.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T, repel=T, label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_harmony_label.png", height=12, width=18, dpi = 100)
 ```
 
 ```{r}
-DimPlot(obj, reduction = "umap", group.by = "sample", label = T, repel = T)
+DimPlot(obj, reduction = "umap", group.by = "sample", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_harmony_sample.pdf")
+
+p<-DimPlot(obj, reduction = "umap", group.by = "sample", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_harmony_sample.png", height=12, width=18, dpi = 100)
 ```
 
 ```{r fig.height=12, fig.width=12}

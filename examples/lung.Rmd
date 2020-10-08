@@ -1,0 +1,240 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of lungl Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+
+```{r}
+library(mclust)
+library(clusterCrit)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+#data <- read.csv("../data/miller20/expr.csv")
+#rownames(data) <- data$index
+#data <- data[-1]
+#data <- as.matrix(data)
+```
+
+```{r}
+#saveRDS(object = data, file = "data.RDS")
+```
+
+```{r}
+data <- readRDS("data.RDS")
+```
+
+```{r}
+meta.data <- read.csv("../data/miller20/meta.data.csv", row.names = 1)
+```
+
+```{r}
+obj <- CreateSeuratObject(t(data), meta.data = meta.data)
+```
+
+```{r}
+rm(data)
+gc()
+```
+
+```{r}
+obj
+```
+
+```{r}
+table(obj$Cell_type)
+```
+
+```{r}
+table(obj$Age)
+```
+
+```{r}
+table(obj$Sample)
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Sample", label = T)
+```
+
+
+```{r fig.height=4, fig.width=10}
+DimPlot(obj, reduction = "umap", group.by = "Cell_type")
+```
+
+```{r}
+source("../R/varactor_seurat2.R")
+
+feature.time.dict = c(W11.5_airway=11.5,
+                      W11.5_distal=11.5,
+                      W15_airway=15,
+                      W15_distal=15,
+                      W15_trachea=15,
+                      W18_airway=18,
+                      W18_distal=18,
+                      W21_trachea=21 )
+
+feature.time.dict = list(W11.5_airway=c(11.5, 2),
+                      W11.5_distal=c(11.5, 4),
+                      W15_airway=c(15, 2),
+                      W15_distal=c(15, 4),
+                      W15_trachea=c(15, 0),
+                      W18_airway=c(18, 2),
+                      W18_distal=c(18, 4),
+                      W21_trachea=c(21, 0) )
+
+
+obj <- RunALT(object = obj, feature.unwanted = "Sample", dims.use = 1:30, reduction.use = "pca", 
+              feature.time.dict = feature.time.dict, reduction.name = "alt", reduction.key = "ALT_", reg = 1, pow=1)
+```
+
+
+```{r}
+obj <- RunUMAP(obj, reduction = "alt", dims = 1:30, verbose=FALSE, reduction.name = "umap2")
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap2", group.by = "Sample", label = T, repel = T)
+```
+
+
+```{r fig.height=4, fig.width=10}
+DimPlot(obj, reduction = "umap2", group.by = "Cell_type") 
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Cell_type", pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Cell_group", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_pca_group.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "Cell_group", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_pca_group.png", height=12, width=18, dpi = 100)
+```
+
+```{r fig.height=8, fig.width=18}
+DimPlot(obj, reduction = "umap", group.by = "Cell_type", label = T, repel=T, label.size = 4,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_pca_label.pdf")
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Sample", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_pca_sample.pdf")
+
+p<-DimPlot(obj, reduction = "umap", group.by = "Sample", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("lung_pca_sample.png", height=12, width=18, dpi = 100)
+```
+
+```{r}
+table(obj$Cell_group)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap2", group.by = "Cell_group", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_alt_group.pdf")
+
+DimPlot(obj, reduction = "umap2", group.by = "Cell_group", label = T, repel=T, label.size = 8,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("lung_alt_group.png", height=12, width=18, dpi = 100)
+```
+
+```{r fig.height=8, fig.width=18}
+DimPlot(obj, reduction = "umap2", group.by = "Cell_type", label = T, repel=T, label.size = 4,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_alt_label.pdf")
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap2", group.by = "Sample", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("lung_alt_sample.pdf")
+
+p<-DimPlot(obj, reduction = "umap2", group.by = "Sample", label.size = 12,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("lung_alt_sample.png", height=12, width=18, dpi = 100)
+```

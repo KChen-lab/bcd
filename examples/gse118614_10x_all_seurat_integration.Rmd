@@ -117,25 +117,62 @@ ElbowPlot(obj)
 
 
 ```{r}
-obj <- FindNeighbors(obj, reduction = "pca", dims = 1:10, verbose=FALSE)
-obj <- FindClusters(obj, resolution = 0.5, verbose=FALSE)
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
 ```
 
 ```{r}
-obj <- RunUMAP(obj, dims = 1:10, verbose=FALSE)
+DimPlot(obj, reduction = "umap", group.by = "age", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_seurat_sample.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "age", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_seurat_sample.png", height=12, width=18, dpi = 100)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T, repel=T, label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_seurat_label.pdf")
+
+DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T, repel=T, label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_seurat_label.png", height=12, width=18, dpi = 100)
 ```
 
 ```{r}
-DimPlot(obj, reduction = "umap", group.by = "age", label = T)
-```
+DimPlot(obj, reduction = "umap", group.by = "sample", label.size = 5,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=18))
+ggsave("retina_seurat_sample.pdf")
 
-
-```{r}
-DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T)
-```
-
-```{r}
-DimPlot(obj, reduction = "umap", group.by = "sample", label = T, repel = T)
+p<-DimPlot(obj, reduction = "umap", group.by = "sample", label.size = 10,  pt.size = 0) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        text=element_text(size=30))
+ggsave("retina_seurat_sample.png", height=12, width=18, dpi = 100)
 ```
 
 ```{r fig.height=12, fig.width=12}
@@ -152,8 +189,8 @@ library(clusterCrit)
 ```
 
 ```{r}
-pca_metric <- intCriteria(obj@reductions$pca@cell.embeddings, 
-                          as.integer(as.factor(obj$short_celltype)), 
-                          c("Silhouette"))
-pca_metric
+#pca_metric <- intCriteria(obj@reductions$pca@cell.embeddings, 
+#                          as.integer(as.factor(obj$short_celltype)), 
+#                          c("Silhouette"))
+#pca_metric
 ```
