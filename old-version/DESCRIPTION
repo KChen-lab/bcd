@@ -1,0 +1,10 @@
+Package: varactor
+Type: Package
+Title: What the Package Does (Title Case)
+Version: 0.1.0
+Author: Shaoheng Liang
+Maintainer: The package maintainer <name@somewhere.net>
+Description: Alternative embedding, clustering and further analysis for single cell data.
+License: MIT License
+Encoding: UTF-8
+LazyData: true

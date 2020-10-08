@@ -1,0 +1,419 @@
+---
+title: "Alternative clustering for normal cells in the Melanoma dataset"
+output: html_notebook
+---
+ 
+```{r}
+rm(list=ls())
+library(matrixStats)
+library(Rtsne)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(Seurat)
+library(expm)  
+```
+
+
+# Read in 
+
+## Seq-Well dataset
+```{r}
+pbmc_well = list()
+pbmc_well$expr <- read.csv("../data/raw/pbmc_seq_well/GSM2486333_PBMC.txt", sep = ' ', header = T, row.names = 1)
+```
+
+## Explore
+```{r}
+pbmc_well$expr <- as.matrix(pbmc_well$expr)
+dim(pbmc_well$expr)
+pbmc_well$expr[1:5, 1:5]
+```
+
+```{r}
+pbmc_well$cell_type <- unlist(lapply(colnames(pbmc_well$expr), function(x) unlist(strsplit(x, split = '_'))[1]))
+table(pbmc_well$cell_type)
+
+pbmc_well$mask <- (pbmc_well$cell_type != "Removed") & (pbmc_well$cell_type != "DC")
+sum(pbmc_well$mask)
+
+pbmc_well$expr <- pbmc_well$expr[, pbmc_well$mask]
+pbmc_well$cell_type <- pbmc_well$cell_type[pbmc_well$mask]
+pbmc_well$mask <- NULL
+```
+
+```{r}
+pbmc_well$tsne <- Rtsne(t(pbmc_well$expr))
+plot(pbmc_well$tsne$Y, col=factor(pbmc_well$cell_type))
+```
+
+```{r}
+pbmc.data <- Read10X(data.dir = "../data/raw/pbmc3k_10x/filtered_gene_bc_matrices/hg19/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, 
+                           project = "pbmc3k")
+
+pbmc <- NormalizeData(pbmc, 
+                      normalization.method = "LogNormalize", 
+                      scale.factor = 10000, 
+                      verbose = FALSE)
+
+pbmc <- FindVariableFeatures(pbmc, 
+                             selection.method = "mean.var.plot", 
+                             nfeatures = 2000, 
+                             mean.cutoff=c(0.5, Inf), 
+                             dispersion.cutoff=c(0.5, Inf),
+                             verbose=FALSE
+                             )
+length(VariableFeatures(pbmc))
+```
+
+```{r}
+pbmc <- ScaleData(pbmc, features = rownames(pbmc))
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+pbmc <- RunTSNE(pbmc)
+```
+
+
+# Cell Markers
+MS4A1 CD20
+ITGAX CD11c
+IL3RA CD123
+NCAM1 CD56
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:13, k.param=50)
+pbmc <- FindClusters(pbmc, resolution = 0.75)
+DimPlot(pbmc, reduction = "tsne")
+```
+
+## T?
+```{r}
+FeaturePlot(pbmc, 
+            features = c("CD3E", "CD3D", "CD3G"),
+            reduction = "tsne")
+```
+
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD4"),
+            reduction = "tsne")
+```
+
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD8A", "CD8B"),
+            reduction = "tsne")
+```
+
+
+## B?
+```{r}
+FeaturePlot(pbmc,
+            features = c("CD19", "MS4A1"),
+            reduction = "tsne")
+```
+
+## Dendritic?
+```{r}
+FeaturePlot(pbmc, 
+            features = c("ITGAX", "IL3RA"),
+            reduction = "tsne")
+```
+
+## NK?
+```{r}
+FeaturePlot(pbmc,
+            features = c("NCAM1"),
+            reduction = "tsne")
+```
+
+## Monocytes?
+```{r}
+FeaturePlot(pbmc, slot='counts',
+            features = c("CD14", "CD33"),
+            reduction = "tsne")
+```
+
+# Cluster 0 CD4?
+```{r}
+cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster0.markers
+```
+
+# Cluster 1 Myeloid?
+```{r}
+cluster1.markers <- FindMarkers(pbmc, ident.1 = 1, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster1.markers
+```
+
+# Cluster 2 B cell?
+```{r}
+cluster2.markers <- FindMarkers(pbmc, ident.1 = 2, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster2.markers
+```
+
+# Cluster 3 CD8 T? 
+```{r}
+cluster3.markers <- FindMarkers(pbmc, ident.1 = 3, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster3.markers
+```
+
+# Cluster 4 Dendritic?
+
+```{r}
+cluster4.markers <- FindMarkers(pbmc, ident.1 = 4, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster4.markers
+```
+
+# Cluster 5 NK?
+```{r}
+cluster5.markers <- FindMarkers(pbmc, ident.1 = 5, min.pct = 0.25, test.use="wilcox", only.pos = T, verbose=FALSE)
+cluster5.markers
+```
+
+```{r}
+pbmc <- RenameIdents(pbmc, '0'='CD4', '1'='Myeloid', '2'='Bcell', '3'='CD8', '4'='DC', '5'='NK')
+DimPlot(pbmc, reduction = "tsne")
+```
+
+# Integration
+
+
+```{r}
+pbmc_10x = list()
+pbmc_10x$expr <- as.matrix(pbmc@assays$RNA@data)
+pbmc_10x$cell_type <- unname(Idents(pbmc))
+
+pbmc_10x$cell_mask <- pbmc_10x$cell_type != 'DC'
+pbmc_10x$expr <- pbmc_10x$expr[, pbmc_10x$cell_mask]
+pbmc_10x$cell_type <- pbmc_10x$cell_type[pbmc_10x$cell_mask]
+```
+
+```{r}
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr) > 0.0
+pbmc_10x$expr2 <- pbmc_10x$expr[pbmc_10x$gene_mask, ]
+
+pbmc_10x$gene_mask <- rowSds(pbmc_10x$expr2) / rowMeans(pbmc_10x$expr2) > 0.5
+pbmc_10x$expr2 <- pbmc_10x$expr2[pbmc_10x$gene_mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr) > 0.0
+pbmc_well$expr2 <- pbmc_well$expr[pbmc_well$mask, ]
+
+pbmc_well$mask <- rowSds(pbmc_well$expr2) / rowMeans(pbmc_well$expr2) > 0.5
+pbmc_well$expr2 <- pbmc_well$expr2[pbmc_well$mask, ]
+
+
+gene_common <- intersect(rownames(pbmc_10x$expr2), rownames(pbmc_well$expr2))
+length(rownames(pbmc_10x$expr2))
+length(rownames(pbmc_well$expr2))
+length(gene_common)
+
+pbmc_10x$expr2 <- pbmc_10x$expr2[gene_common, ]
+pbmc_well$expr2 <- pbmc_well$expr2[gene_common, ]
+```
+
+```{r}
+hist(rowSds(pbmc_10x$expr2), xlim=c(0,2), breaks=20)
+hist(rowSds(pbmc_well$expr2), xlim=c(0,2), breaks=20)
+```
+
+## Get a consensus weight
+
+```{r}
+pbmc_10x$sd2 <- rowSds(pbmc_10x$expr2)
+pbmc_well$sd2 <- rowSds(pbmc_well$expr2)
+
+pbmc_10x$mean2 <- rowMeans(pbmc_10x$expr2)
+pbmc_well$mean2 <- rowMeans(pbmc_well$expr2)
+
+int = list()
+int$weight <- sqrt((pbmc_10x$sd2 ^ 2 + pbmc_well$sd2 ^ 2) / 2)
+int$weight <- int$weight / sd(int$weight) + 1.
+```
+
+```{r}
+plot(pbmc_10x$sd2, pbmc_well$sd2, pch=20)
+cor(pbmc_10x$sd2, pbmc_well$sd2)
+```
+
+
+```{r}
+int$expr <- cbind((pbmc_10x$expr2 - pbmc_10x$mean2) / pbmc_10x$sd2,
+              (pbmc_well$expr2 - pbmc_well$mean2) / pbmc_well$sd2)
+int$expr <- int$expr * int$weight
+
+int$cell_type <- c(as.character(pbmc_10x$cell_type), pbmc_well$cell_type)
+int$tech <- c(rep('10x', length(pbmc_10x$cell_type)), rep('well', length(pbmc_well$cell_type)))
+```
+
+
+```{r}
+int$tsne <- Rtsne(t(int$expr))
+```
+
+```{r}
+plot(int$tsne$Y, pch=20, cex=.5)
+plot(int$tsne$Y, col=factor(int$cell_type), pch=20, cex=.5)
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne$Y, col=factor(int$tech), pch=20, cex=.5)
+```
+
+```{r}
+int$pca <- prcomp(t(int$expr), rank.=50)
+```
+
+
+```{r}
+x = int$pca$x
+B = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(int$tech))
+{
+  mask <- int$tech != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B <- B + temp %*% t(temp)
+}
+B <- B / dim(x)[1]
+
+mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
+{
+  if (is.null(y)) y = x
+  if (is.null(B)) B = diag(dim(x)[2])
+  B <- solve(B)
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+dist2 <- mahalanobis_pdist2(x, B=B)
+int$dist2 <- sqrt(dist2 - min(dist2))
+```
+
+
+```{r}
+
+set.seed(0)
+int$tsne2 <- Rtsne(int$dist2, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+```
+
+```{r}
+plot(int$tsne2$Y, pch=20, cex=.5)
+plot(int$tsne2$Y, col=factor(int$cell_type), pch=20, cex=.5)
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne2$Y, col=factor(int$tech), pch=20, cex=.5)
+```
+
+```{r}
+x = int$pca$x[int$tech == '10x', ]
+B_intra1 = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(int$cell_type[int$tech == '10x']))
+{
+  mask <- int$cell_type[int$tech == '10x'] != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B_intra1 <- B_intra1 + temp %*% t(temp)
+}
+B_intra1 <- B_intra1 / dim(x)[1]
+
+x = int$pca$x[int$tech == 'well', ]
+B_intra2 = matrix(0, ncol=dim(x)[2], nrow=dim(x)[2])
+for (j in unique(int$cell_type[int$tech == 'well']))
+{
+  mask <- int$cell_type[int$tech == 'well'] != j
+  temp = t(x[mask, ]) - colSums(x[!mask, ])
+  B_intra2 <- B_intra2 + temp %*% t(temp)
+}
+B_intra2 <- B_intra2 / dim(x)[1]
+```
+
+```{r}
+
+inv_mahalanobis_pdist2 <- function(x, y = NULL, B = NULL)
+{
+  if (is.null(y)) y = x
+  if (is.null(B)) B = diag(dim(x)[2])
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+int$dist_intra_10x <- sqrt(inv_mahalanobis_pdist2(int$pca$x, B=solve(B_intra1)) + 1e-9)
+int$dist_intra_well <- sqrt(inv_mahalanobis_pdist2(int$pca$x, B=solve(B_intra2)) + 1e-9)
+
+sed <- function(d, s) {2 - 2 * exp(-d ^ 2 / s ^ 2)}
+
+int$dist3 <- sed(int$dist2, mean(dist2) / 2) + 0.01 * (sed(int$dist_intra_10x, mean(int$dist_intra_10x) / 2) + sed(int$dist_intra_well, mean(int$dist_intra_well) / 2))
+
+set.seed(0)
+int$tsne3 <- Rtsne(int$dist3, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(int$tsne3$Y)
+plot(int$tsne3$Y, col=factor(int$cell_type))
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne3$Y, col=factor(int$tech))
+```
+
+
+
+```{r}
+
+set.seed(0)
+
+int$dist1 <- sqrt(mahalanobis_pdist2(int$pca$x) + 1e-9)
+
+int$dist3 <- (2 - 2 * exp(-int$dist2 ^ 2 / 5 ^ 2)) + (2 - 2 * exp(-int$dist1 ^ 2 / 30 ^ 2))
+
+set.seed(0)
+int$tsne3 <- Rtsne(int$dist3, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(int$tsne3$Y)
+plot(int$tsne3$Y, col=factor(int$cell_type))
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne3$Y, col=factor(int$tech))
+```
+
+
+
+```{r}
+mixed_mahalanobis_pdist2 <- function(x, y = NULL, B_inter, B_intra)
+{
+  if (is.null(y)) y = x
+  B <- solve(B_inter) + B_intra
+  xx = rowSums(x %*% B * x)
+  yy = rowSums(y %*% B * y)
+  pdist <- t(matrix(rep(yy, length(xx)), ncol=length(yy)))
+  pdist <- pdist + xx
+  pdist <- pdist - 2 * x %*% B %*% t(y)
+  pdist
+}
+
+x = int$pca$x
+dist2 <- mixed_mahalanobis_pdist2(x, B_inter=B * 0.0000001, B_intra=(B_intra1 + B_intra2) * 0.0000001)
+int$dist2 <- sqrt(dist2 - min(dist2))
+
+set.seed(0)
+int$tsne2 <- Rtsne(int$dist2, is_distance = TRUE, pca=FALSE)
+pch = 20
+cex = .8
+
+plot(int$tsne2$Y)
+plot(int$tsne2$Y, col=factor(int$cell_type))
+plot.new()
+legend('center', legend = levels(factor(int$cell_type)), col = 1:length(levels(factor(int$cell_type))), pch=20)
+plot(int$tsne2$Y, col=factor(int$tech))
+```

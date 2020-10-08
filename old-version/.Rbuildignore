@@ -1,0 +1,7 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^[.].*$
+^.*/[.].*$
+.git
+examples
+docs

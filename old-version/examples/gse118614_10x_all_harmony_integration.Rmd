@@ -1,0 +1,138 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+library(harmony)
+```
+
+
+```{r}
+library(mclust)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+barcode.path <- "../data/GSE118614/barcodes.tsv"
+features.path <- "../data/GSE118614/genes.tsv"
+matrix.path <- "../data/GSE118614/matrix.mtx"
+mat <- t(readMM(file = matrix.path))
+feature.names = read.delim(features.path, 
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+barcode.names = read.delim(barcode.path, 
+                           header = TRUE,
+                           stringsAsFactors = FALSE)
+```
+
+```{r}
+dim(mat)
+```
+
+```{r}
+colnames(mat) <- barcode.names$barcode
+rownames(mat) <- feature.names$id
+```
+
+```{r}
+obj <- CreateSeuratObject(mat, project="retina")
+rm(mat)
+gc()
+```
+
+```{r}
+obj
+```
+
+```{r}
+obj$age <- barcode.names$age
+obj$sample <- barcode.names$sample
+obj$celltype <- barcode.names$umap2_CellType
+```
+
+```{r}
+table(obj$celltype)
+```
+
+```{r}
+obj <- obj[, obj$celltype %in% c("Amacrine Cells", "Bipolar Cells", "Cones", "Early RPCs", "Horizontal Cells", 
+                               "Late RPCs", "Muller Glia", "Neurogenic Cells", "Photoreceptor Precursors", 
+                               "Photoreceptor Precursors", "Retinal Ganglion Cells", "Rods")]
+```
+
+```{r}
+short_celltype <- obj$celltype
+short_celltype[short_celltype == 'Amacrine Cells'] = "Am"
+short_celltype[short_celltype == 'Bipolar Cells'] = "BC"
+short_celltype[short_celltype == 'Cones'] = "Cone"
+short_celltype[short_celltype == 'Early RPCs'] = "ERPC"
+short_celltype[short_celltype == 'Horizontal Cells'] = "HC"
+short_celltype[short_celltype == 'Late RPCs'] = "LRPC"
+short_celltype[short_celltype == 'Muller Glia'] = "MG"
+short_celltype[short_celltype == 'Neurogenic Cells'] = "Ng"
+short_celltype[short_celltype == 'Photoreceptor Precursors'] = "Ph"
+short_celltype[short_celltype == 'Retinal Ganglion Cells'] = "RGC"
+short_celltype[short_celltype == 'Rods'] = "Rod"
+obj$short_celltype <- short_celltype
+```
+
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 20, verbose = FALSE)
+ElbowPlot(obj)
+```
+
+
+```{r}
+obj <- RunHarmony(obj, "sample", plot_convergence = TRUE)
+```
+
+```{r}
+library(clusterCrit)
+```
+
+```{r}
+harmony_metric <- intCriteria(obj@reductions$harmony@cell.embeddings, 
+                          as.integer(as.factor(obj$short_celltype)), 
+                          c("Silhouette"))
+harmony_metric
+```
+
+```{r}
+obj <- RunUMAP(obj, reduction = "harmony", dims = 1:20, verbose=FALSE)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "age", label = T)
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "short_celltype", label = T)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "sample", label = T, repel = T)
+```
+
+```{r fig.height=12, fig.width=12}
+DimPlot(obj, reduction = "umap", split.by = "sample", group.by = "short_celltype", label = T, repel = T, ncol=3)
+```
+
+```{r fig.height=12, fig.width=12}
+DimPlot(obj, reduction = "umap", group.by = "sample", split.by = "short_celltype", label = T, repel = T, ncol=3)
+```
