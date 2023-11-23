@@ -1,0 +1,56 @@
+---
+title: "GSE112294 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+```{r}
+genes <- read.csv("../data/GSE112294/WagnerScience2018_genes.csv", row.names = 1)
+metadata <- read.csv("../data/GSE112294/WagnerScience2018_metadata.csv", row.names = 1)
+data <- readMM("../data/GSE112294/WagnerScience2018.mtx")
+data = t(data)
+rownames(data) <- rownames(genes)
+colnames(data) <- rownames(metadata)
+obj <- CreateSeuratObject(data, meta.data = metadata)
+```
+
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+ElbowPlot(obj)
+```
+
+
+```{r}
+ptm = proc.time()
+obj <- RunHarmony(obj, "TimeID", plot_convergence = TRUE)
+proc.time() - ptm
+```
+
+
+```{r}
+obj <- RunUMAP(obj, reduction = "harmony", dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+saveRDS(obj, "../output-embeddings/gse112294_harmony.RDS")
+```
+
+```{r}
+write.csv(obj@reductions$harmony@cell.embeddings, '../output-embeddings/gse112294_harmony.csv')
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/gse112294_harmony_umap.csv')
+```
+

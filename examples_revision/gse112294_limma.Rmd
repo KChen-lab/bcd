@@ -1,0 +1,53 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+```{r}
+genes <- read.csv("../data/GSE112294/WagnerScience2018_genes.csv", row.names = 1)
+metadata <- read.csv("../data/GSE112294/WagnerScience2018_metadata.csv", row.names = 1)
+data <- readMM("../data/GSE112294/WagnerScience2018.mtx")
+data = t(data)
+rownames(data) <- rownames(genes)
+colnames(data) <- rownames(metadata)
+obj <- CreateSeuratObject(data, meta.data = metadata)
+```
+
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+```
+
+```{r}
+limma_corrected = limma::removeBatchEffect(obj@assays$RNA@data[VariableFeatures(object = obj),  ], obj$TimeID)
+obj@assays$RNA@data <- limma_corrected
+```
+
+
+```{r}
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+```{r}
+saveRDS(obj, "../output-embeddings/gse112294_limma.RDS")
+```
+
+```{r}
+write.csv(obj@reductions$pca@cell.embeddings, '../output-embeddings/gse112294_limma.csv')
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/gse112294_limma_umap.csv')
+```

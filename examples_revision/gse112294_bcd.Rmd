@@ -1,0 +1,92 @@
+---
+title: "GSE112294 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+```{r}
+genes <- read.csv("../data/GSE112294/WagnerScience2018_genes.csv", row.names = 1)
+metadata <- read.csv("../data/GSE112294/WagnerScience2018_metadata.csv", row.names = 1)
+data <- readMM("../data/GSE112294/WagnerScience2018.mtx")
+data = t(data)
+rownames(data) <- rownames(genes)
+colnames(data) <- rownames(metadata)
+obj <- CreateSeuratObject(data, meta.data = metadata)
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+```{r}
+obj <- FindNeighbors(obj, reduction = "pca", dims = 1:15, verbose=FALSE)
+obj <- FindClusters(obj, resolution = 0.5, verbose=FALSE)
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+table(obj$TimeID)
+```
+
+
+```{r}
+source("../R/bcd_seurat.R")
+
+ptm = proc.time()
+feature.time.dict = c(`10hpf`=10,
+                      `14hpf`=14,
+                      `18hpf`=18,
+                      `24hpf`=24,
+                      `4hpf`=4,
+                      `6hpf`=6,
+                      `8hpf`=8)
+
+obj <- RunALT(object = obj, feature.unwanted = "TimeID", dims.use = 1:30, reduction.use = "pca", 
+              feature.time.dict = feature.time.dict, reduction.name = "alt", reduction.key = "ALT_")
+
+proc.time() - ptm
+#alt_metric <- intCriteria(obj@reductions$alt@cell.embeddings, 
+#                          as.integer(as.factor(obj$short_celltype)), 
+#                          "Silhouette")
+#alt_metric 
+```
+
+
+```{r}
+obj <- RunUMAP(obj, reduction = "alt", dims = 1:30, verbose=FALSE, reduction.name = "umap2")
+```
+
+```{r}
+saveRDS(obj, "../output-embeddings/gse112294_bcd.RDS")
+```
+
+
+```{r}
+write.csv(obj@reductions$alt@cell.embeddings, '../output-embeddings/gse112294_bcd.csv')
+write.csv(obj@reductions$pca@cell.embeddings, '../output-embeddings/gse112294_pca.csv')
+write.csv(obj@meta.data, '../output-embeddings/gse112294_label.csv')
+
+
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/gse112294_bcd_umap.csv')
+write.csv(obj@reductions$umap2@cell.embeddings, '../output-embeddings/gse112294_pca_umap.csv')
+```
+

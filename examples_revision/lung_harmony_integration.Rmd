@@ -1,0 +1,52 @@
+---
+title: "Lung Harmony"
+output: html_notebook
+---
+
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+library(harmony)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+obj <- readRDS("data.RDS")
+```
+
+```{r}
+obj <- CreateSeuratObject(t(data), meta.data = meta.data)
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+ElbowPlot(obj)
+```
+
+
+```{r}
+ptm = proc.time()
+obj <- RunHarmony(obj, "Sample", plot_convergence = TRUE)
+proc.time() - ptm
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+
+```{r}
+write.csv(obj@reductions$harmony@cell.embeddings, '../output-embeddings/lung_harmony_bcd.csv')
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/lung_harmony_umap.csv')
+saveRDS(obj, "../output-embeddings/lung_harmony.RDS")
+```

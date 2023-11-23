@@ -1,0 +1,318 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(ggplot2)
+library(Matrix)
+library(Seurat)
+```
+
+
+```{r}
+library(mclust)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+set.seed(0)
+
+pluri = rbinom(200, 20, 0.5)
+
+a = pluri
+a[1:120] = a[1:120] + rbinom(120, 10, 0.5)
+
+b = pluri
+b[81:200] = b[81:200] + rbinom(120, 10, 0.5)
+
+a1 = a
+a1[11:70] = a1[11:70] + rbinom(60, 10, 0.5)
+
+a2 = a
+a2[51:110] = a2[51:110] + rbinom(60, 10, 0.5)
+
+b1 = b
+b1[91:150] = a1[91:150] + rbinom(60, 10, 0.5)
+
+b2 = b
+b2[131:190] = b2[131:190] + rbinom(60, 10, 0.5)
+
+batch_strength = 160
+batch_effect1 = floor((runif(200, 0, 1) > 0.85) * runif(200, 0, batch_strength))
+batch_effect2 = floor((runif(200, 0, 1) > 0.85) * runif(200, 0, batch_strength))
+```
+
+```{r}
+sample1 = matrix(NA, ncol=1000, nrow=200)
+label1 = rep("pluri", 1000)
+for (i in 1:250){
+  p = runif(1, 0, 0.4) + runif(200, 0, 0.1)
+  sample1[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100)
+  label1[i] = 'S'
+}
+for (i in 251:500){
+  p = runif(1, 0.4, 0.7) + runif(200, 0, 0.1)
+  sample1[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100)
+  label1[i] = 'S->A'
+}
+for (i in 501:750){
+  p = runif(1, 0, 0.4) + runif(200, 0, 0.1)
+  sample1[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100)
+  label1[i] = 'S'
+}
+for (i in 751:1000){
+  p = runif(1, 0, 0.4) + runif(200, 0, 0.1)
+  sample1[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100)
+  label1[i] = 'S->A'
+}
+
+```
+
+```{r}
+sample2 = matrix(NA, ncol=1000, nrow=200)
+label2 = rep("pluri", 1000)
+for (i in 1:250){
+  p = runif(1, 0.4, 0.7) + runif(200, 0, 0.1)
+  sample2[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100) + rpois(200, batch_effect1)
+  label2[i] = 'S->A'
+}
+for (i in 251:500){
+  p = runif(1, 0.7, 1.) + runif(200, 0, 0.1)
+  sample2[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100) + rpois(200, batch_effect1)
+  label2[i] = 'A'
+}
+for (i in 501:750){
+  p = runif(1, 0.4, 0.7) + runif(200, 0, 0.1)
+  sample2[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100) + rpois(200, batch_effect1)
+  label2[i] = 'S->B'
+}
+for (i in 751:1000){
+  p = runif(1, 0.7, 1.) + runif(200, 0, 0.1)
+  sample2[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100) + rpois(200, batch_effect1)
+  label2[i] = 'B'
+}
+```
+
+```{r}
+sample2_1 = matrix(NA, ncol=1000, nrow=200)
+label2_1 = rep("pluri", 1000)
+for (i in 1:250){
+  p = runif(1, 0.4, 0.7) + runif(200, 0, 0.1)
+  sample2_1[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100) + rpois(200, batch_effect2)
+  label2_1[i] = 'S->A'
+}
+for (i in 251:500){
+  p = runif(1, 0.7, 1.) + runif(200, 0, 0.1)
+  sample2_1[, i] <- rpois(200, floor(pluri * (1 - p) + a * p) * 100) + rpois(200, batch_effect2)
+  label2_1[i] = 'A'
+}
+for (i in 501:750){
+  p = runif(1, 0.4, 0.7) + runif(200, 0, 0.1)
+  sample2_1[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100) + rpois(200, batch_effect2)
+  label2_1[i] = 'S->B'
+}
+for (i in 751:1000){
+  p = runif(1, 0.7, 1.) + runif(200, 0, 0.1)
+  sample2_1[, i] <- rpois(200, floor(pluri * (1 - p) + b * p) * 100) + rpois(200, batch_effect2)
+  label2_1[i] = 'B'
+}
+```
+
+```{r}
+sample3 = matrix(NA, ncol=1000, nrow=200)
+label3 = rep("pluri", 1000)
+for (i in 1:125){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'A'
+}
+for (i in 126:250){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'A->A1'
+}
+for (i in 251:375){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'A'
+}
+for (i in 376:500){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'A->A2'
+}
+for (i in 501:625){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'B'
+}
+for (i in 626:750){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'B->B1'
+}
+for (i in 751:875){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100) + rpois(200, batch_effect1)
+  label3[i] <- 'B'
+}
+for (i in 876:1000){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100)
+  label3[i] <- 'B->B2'
+}
+```
+
+```{r}
+sample3_5 = matrix(NA, ncol=1000, nrow=200)
+label3_5 = rep("pluri", 1000)
+for (i in 1:125){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'A'
+}
+for (i in 126:250){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'A->A1'
+}
+for (i in 251:375){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'A'
+}
+for (i in 376:500){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'A->A2'
+}
+for (i in 501:625){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'B'
+}
+for (i in 626:750){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'B->B1'
+}
+for (i in 751:875){
+  p = runif(1, 0.0, 0.3) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'B'
+}
+for (i in 876:1000){
+  p = runif(1, 0.3, 0.6) + runif(200, 0, 0.1)
+  sample3_5[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100) + rpois(200, batch_effect2)
+  label3_5[i] <- 'B->B2'
+}
+```
+
+```{r}
+sample4 = matrix(NA, ncol=1000, nrow=200)
+label4 = rep("pluri", 1000)
+for (i in 1:250){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample4[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect1)
+  label4[i] <- 'A1'
+}
+for (i in 251:500){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample4[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect1)
+  label4[i] <- 'A2'
+}
+for (i in 501:750){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample4[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect1)
+  label4[i] <- 'B1'
+}
+for (i in 751:1000){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample4[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100) + rpois(200, batch_effect1)
+  label4[i] <- 'B2'
+}
+
+sample5 = matrix(NA, ncol=1000, nrow=200)
+label5 = rep("pluri", 1000)
+for (i in 1:250){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample5[, i] <- rpois(200, floor(a * (1 - p) + a1 * p) * 100) + rpois(200, batch_effect2)
+  label5[i] <- 'A1'
+}
+for (i in 251:500){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample5[, i] <- rpois(200, floor(a * (1 - p) + a2 * p) * 100) + rpois(200, batch_effect2)
+  label5[i] <- 'A2'
+}
+for (i in 501:750){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample5[, i] <- rpois(200, floor(b * (1 - p) + b1 * p) * 100) + rpois(200, batch_effect2)
+  label5[i] <- 'B1'
+}
+for (i in 751:1000){
+  p = runif(1, 0.6, 0.9) + runif(200, 0, 0.1)
+  sample5[, i] <- rpois(200, floor(b * (1 - p) + b2 * p) * 100) + rpois(200, batch_effect2)
+  label5[i] <- 'B2'
+}
+
+```
+
+
+
+```{r}
+mat = cbind(sample1, sample2, sample2_1, sample3, sample3_5, sample4, sample5)
+day = c(rep("day1", 1000), rep("day2", 2000), rep("day3", 1000), rep("day3", 1000), rep("day4", 2000))
+sample = c(rep("day1", 1000), rep("day2_sample1", 1000), rep("day2_sample2", 1000), rep("day3_sample1", 1000), rep("day3_sample2", 1000), rep("day4_sample1", 1000), rep("day4_sample2", 1000))
+label = c(label1, label2, label2_1, label3, label3_5, label4, label5)
+```
+
+```{r}
+colnames(mat) = paste0("cell", 1:ncol(mat))
+rownames(mat) = paste0("gene", 1:nrow(mat))
+```
+
+
+```{r}
+obj <- CreateSeuratObject(mat, project="simulation")
+```
+
+```{r}
+obj$sample = sample
+obj$label = label
+obj
+```
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+```
+
+```{r}
+limma_corrected = limma::removeBatchEffect(obj@assays$RNA@data[VariableFeatures(object = obj),  ], obj$sample)
+obj@assays$RNA@data <- limma_corrected
+```
+
+
+```{r}
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:3, verbose=FALSE)
+```
+
+```{r}
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/sim_eq_limma_umap.csv')
+write.csv(obj@meta.data, "../output-embeddings/sim_eq_metadata.csv")
+```

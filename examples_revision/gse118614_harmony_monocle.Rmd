@@ -1,0 +1,143 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+library(monocle3)
+library(SeuratWrappers)
+library(ggplot2)
+```
+
+
+```{r}
+obj <- readRDS("../output-embeddings/gse118614_harmony.RDS")
+```
+
+```{r}
+gene_table = read.table("../data/GSE118614/genes.tsv")
+gmap = gene_table[['gene_short_name']]
+names(gmap) <- rownames(gene_table)
+gmap
+```
+
+
+```{r}
+row.names(obj)
+```
+
+
+```{r}
+set.seed(2023)
+cds <- as.cell_data_set(obj[, sample(colnames(obj), size = 10000, replace=F)])
+cds <- cluster_cells(cds, resolution=1e-3)
+```
+
+```{r}
+p1 <- plot_cells(cds, reduction_method="UMAP", color_cells_by = "celltype", show_trajectory_graph = FALSE)
+p1
+```
+```{r}
+cds <- learn_graph(cds, use_partition = FALSE, verbose = TRUE)
+```
+
+```{r}
+plot_cells(cds,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE)
+```
+
+```{r}
+cds <- order_cells(cds, root_cells = colnames(cds[,clusters(cds) == 5]))
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           group_cells_by = "cluster",
+           label_cell_groups = FALSE,
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           label_roots = FALSE,
+           trajectory_graph_color = "grey60")
+```
+```{r}
+# ciliated_cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=4)
+# pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
+```
+```{r}
+# test_res = ciliated_cds_pr_test_res
+# test_res$gene_names = gmap
+# test_res
+```
+
+```{r}
+# test_res[test_res$gene_names %in% c('Nfia', 'Nfib', 'Nfic'), ]
+```
+
+```{r}
+pt = pseudotime(cds)
+```
+
+
+```{r}
+subobj <- obj[, names(pt)]
+subobj$monocle3_pseudotime <- pt
+```
+
+```{r fig.height=3, fig.width=5}
+subobj$sample <- factor(subobj$sample, levels = c("E11", "E12_rep1", "E14_rep1", "E14_rep2", "E16", "E18_rep2", "E18_rep3", "P0", "P2_rep2", "P2_rep3", "P5", "P8_rep1", "P8_rep2", "P14"))
+png("../figures/s5_harmony_a.png", width=1200, height=750, res=300)
+plt <- VlnPlot(subobj, "monocle3_pseudotime", group.by = 'sample', pt.size=.1) + NoLegend()
+plt$labels$title <- NULL
+print(plt)
+dev.off()
+
+plt
+```
+
+```{r}
+df <- data.frame(pseudotime=subobj$monocle3_pseudotime, 
+                 Nfia=subobj@assays$RNA@data['ENSMUSG00000028565', ],
+                 Nfib=subobj@assays$RNA@data['ENSMUSG00000008575', ],
+                 Nfic=subobj@assays$RNA@data['ENSMUSG00000055053', ])
+
+df <- df[subobj$celltype %in% c("Early RPCs", "Late RPCs"), ]
+nrow(df)
+```
+
+
+
+
+```{r}
+df2 = data.frame(pseudotime=0:max(df$pseudotime),
+                 Nfia=0, Nfib=0, Nfic=0)
+for (i in 1:nrow(df2)){
+  for (j in c('Nfia', 'Nfib', 'Nfic')) {
+    df2[i, j] = mean(df[df$pseudotime > df2$pseudotime[i] - 5. & df$pseudotime < df2$pseudotime[i] + 5., j])
+  }
+}
+```
+
+```{r}
+library(data.table)
+long <- melt(setDT(df2), id.vars = c("pseudotime"), variable.name = 'gene', value.name='expression')
+long
+```
+
+
+```{r fig.height=3, fig.width=3}
+fig <- ggplot(long, aes(x=pseudotime, y=expression, color=gene)) + geom_line(size=1.) + theme_classic() 
+png("../figures/s5_harmony_b.png", width=1050, height=750, res=300)
+print(fig)
+dev.off()
+fig
+```

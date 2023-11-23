@@ -1,0 +1,79 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+obj <- readRDS("miller20.RDS")
+```
+
+```{r}
+obj
+```
+
+```{r}
+table(obj$Cell_type)
+```
+
+```{r}
+table(obj$Age)
+```
+
+```{r}
+table(obj$Sample)
+```
+
+```{r}
+objs <- SplitObject(obj, split.by = "Sample")
+```
+
+```{r}
+rm(obj)
+gc()
+```
+
+
+```{r}
+for (i in names(objs)) {
+  objs[[i]] <- NormalizeData(objs[[i]], verbose=FALSE)
+  objs[[i]] <- FindVariableFeatures(objs[[i]], selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+  objs[[i]] <- ScaleData(objs[[i]], verbose=FALSE)
+  objs[[i]] <- RunPCA(objs[[i]], features = VariableFeatures(object = objs[[i]]), verbose=FALSE)
+}
+
+ptm = proc.time()
+anchors <- FindIntegrationAnchors(object.list = objs, dims = 1:30)
+obj <- IntegrateData(anchorset = anchors, dims = 1:30)
+proc.time() - ptm
+```
+
+```{r}
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+write.csv(obj@reductions$pca@cell.embeddings, '../output-embeddings/lung_seurat_bcd.csv')
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/lung_seurat_umap.csv')
+saveRDS(obj, "../output-embeddings/lung_seurat.RDS")
+```
+

@@ -1,0 +1,134 @@
+---
+title: "Lung"
+output: html_notebook
+---
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+library(ggplot2)
+```
+
+# Overview of the dataset
+We first overview the dataset.
+
+```{r}
+# data <- read.csv("../data/miller20/expr.csv")
+# rownames(data) <- data$index
+# data <- data[-1]
+# data <- as.matrix(data)
+```
+
+```{r}
+# meta.data <- read.csv("../data/miller20/meta.data.csv", row.names = 1)
+```
+
+```{r}
+# obj <- CreateSeuratObject(t(data), meta.data = meta.data)
+```
+
+```{r}
+# saveRDS(object = obj, file = "miller20.RDS")
+```
+
+```{r}
+obj <- readRDS("miller20.RDS")
+```
+
+```{r}
+obj
+```
+
+```{r}
+table(obj$Cell_type)
+```
+
+```{r}
+table(obj$Age)
+```
+
+```{r}
+table(obj$Sample)
+```
+
+```{r}
+obj <- NormalizeData(obj, verbose=FALSE)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+obj <- ScaleData(obj, verbose=FALSE)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj), verbose=FALSE)
+
+ElbowPlot(obj)
+```
+
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:30, verbose=FALSE)
+```
+
+```{r}
+DimPlot(obj, reduction = "umap", group.by = "Sample", label = T)
+```
+
+
+```{r fig.height=4, fig.width=10}
+DimPlot(obj, reduction = "umap", group.by = "Cell_type")
+```
+
+```{r}
+source("../R/bcd_seurat.R")
+
+feature.time.dict = c(W11.5_airway=11.5,
+                      W11.5_distal=11.5,
+                      W15_airway=15,
+                      W15_distal=15,
+                      W15_trachea=15,
+                      W18_airway=18,
+                      W18_distal=18,
+                      W21_trachea=21 )
+
+feature.time.dict = list(W11.5_airway=c(11.5, 2),
+                      W11.5_distal=c(11.5, 4),
+                      W15_airway=c(15, 2),
+                      W15_distal=c(15, 4),
+                      W15_trachea=c(15, 0),
+                      W18_airway=c(18, 2),
+                      W18_distal=c(18, 4),
+                      W21_trachea=c(21, 0) )
+
+
+obj <- RunALT(object = obj, feature.unwanted = "Sample", dims.use = 1:30, reduction.use = "pca", 
+              feature.time.dict = feature.time.dict, reduction.name = "alt", reduction.key = "ALT_", reg = 1, pow=1)
+```
+
+
+```{r}
+obj <- RunUMAP(obj, reduction = "alt", dims = 1:30, verbose=FALSE, reduction.name = "umap2")
+```
+
+
+```{r}
+DimPlot(obj, reduction = "umap2", group.by = "Sample", label = T, repel = T)
+```
+
+
+```{r fig.height=4, fig.width=10}
+DimPlot(obj, reduction = "umap2", group.by = "Cell_type") 
+```
+
+```{r}
+saveRDS(obj, "../output-embeddings/lung_bcd.RDS")
+```
+
+
+```{r}
+write.csv(obj@reductions$alt@cell.embeddings, '../output-embeddings/lung_bcd.csv')
+write.csv(obj@reductions$pca@cell.embeddings, '../output-embeddings/lung_pca.csv')
+
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/lung_pca_umap.csv')
+write.csv(obj@reductions$umap2@cell.embeddings, '../output-embeddings/lung_bcd_umap.csv')
+write.csv(obj@meta.data, '../output-embeddings/lung_label.csv')
+
+```

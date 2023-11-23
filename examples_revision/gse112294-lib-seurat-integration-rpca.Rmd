@@ -1,0 +1,75 @@
+---
+title: "GSE118614 10x"
+output: html_notebook
+---
+
+This is an analysis for the dataset [GSE118614](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE118614) made available by Clark BS et al. in their paper [_Single-cell RNA-Seq Analysis of Retinal Development Identifies NFI Factors as Regulating Mitotic Exit and Late-Born Cell Specification_](https://www.sciencedirect.com/science/article/abs/pii/S0896627319303459).
+
+
+
+
+```{r}
+rm(list=ls())
+gc()
+library(Matrix)
+library(Seurat)
+```
+
+```{r}
+genes <- read.csv("../data/GSE112294/WagnerScience2018_genes.csv", row.names = 1)
+metadata <- read.csv("../data/GSE112294/WagnerScience2018_metadata.csv", row.names = 1)
+data <- readMM("../data/GSE112294/WagnerScience2018.mtx")
+data = t(data)
+rownames(data) <- rownames(genes)
+colnames(data) <- rownames(metadata)
+obj <- CreateSeuratObject(data, meta.data = metadata)
+
+rm(data)
+gc()
+```
+
+```{r}
+objs <- SplitObject(obj, split.by = "library_id")
+```
+
+```{r}
+rm(obj)
+gc()
+```
+
+
+```{r}
+for (i in names(objs)) {
+  objs[[i]] <- NormalizeData(objs[[i]], verbose=FALSE)
+  objs[[i]] <- FindVariableFeatures(objs[[i]], selection.method = "vst", nfeatures = 2000, verbose=FALSE)
+
+  objs[[i]] <- ScaleData(objs[[i]], verbose=FALSE)
+  objs[[i]] <- RunPCA(objs[[i]], features = VariableFeatures(object = objs[[i]]), verbose=FALSE)
+}
+
+anchors <- FindIntegrationAnchors(object.list = objs, dims = 1:30, reduction = 'rpca')
+obj <- IntegrateData(anchorset = anchors, dims = 1:30)
+```
+
+```{r}
+obj <- ScaleData(obj, verbose = FALSE)
+obj <- RunPCA(obj, npcs = 30, verbose = FALSE)
+ElbowPlot(obj)
+```
+```{r}
+obj <- readRDS("../output-embeddings/gse112294_lib_seurat_rpca.RDS")
+```
+
+```{r}
+obj <- RunUMAP(obj, dims = 1:10, verbose=FALSE)
+```
+
+
+```{r}
+saveRDS(obj, "../output-embeddings/gse112294_lib_seurat_rpca.RDS")
+```
+
+```{r}
+write.csv(obj@reductions$pca@cell.embeddings, '../output-embeddings/gse112294_lib_seurat_rpca.csv')
+write.csv(obj@reductions$umap@cell.embeddings, '../output-embeddings/gse112294_lib_seurat_rpca_umap.csv')
+```
